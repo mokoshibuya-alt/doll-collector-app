@@ -68,6 +68,51 @@ function timestamp() {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { resolve(img); URL.revokeObjectURL(url); };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function createCaptionedImage(file, charName, catchCopy) {
+  const img = await loadImage(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+
+  const barHeight = Math.max(canvas.height * 0.2, 140);
+  const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
+  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+
+  const padding = canvas.width * 0.05;
+  const nameFontSize = Math.round(canvas.width * 0.06);
+  const catchFontSize = Math.round(canvas.width * 0.042);
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = '#ffffff';
+
+  let y = canvas.height - padding;
+  if (catchCopy) {
+    ctx.font = `${catchFontSize}px sans-serif`;
+    ctx.fillText(catchCopy, padding, y);
+    y -= catchFontSize * 1.5;
+  }
+  if (charName) {
+    ctx.font = `bold ${nameFontSize}px sans-serif`;
+    ctx.fillText(charName, padding, y);
+  }
+
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+}
+
 function downloadFile(file) {
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
@@ -94,20 +139,34 @@ saveBtn.addEventListener('click', async () => {
   const parts = [category, charName, ts].filter(Boolean);
   const baseName = parts.join('_');
 
+  statusEl.textContent = '画像を作成中...';
+  saveBtn.disabled = true;
+
   const imageFile = new File([file], `${baseName}.${ext}`, { type: file.type });
-  const textContent = `カテゴリ: ${category}\nキャラ名: ${charName}\nキャッチコピー: ${catchCopy}\n`;
+  const textContent = `【カテゴリ】\n${category}\n\n【キャラ名】\n${charName}\n\n【キャッチコピー】\n${catchCopy}\n`;
   const textFile = new File([textContent], `${baseName}.txt`, { type: 'text/plain' });
 
-  if (navigator.canShare && navigator.canShare({ files: [imageFile, textFile] })) {
+  let files = [imageFile, textFile];
+  try {
+    const captionedBlob = await createCaptionedImage(file, charName, catchCopy);
+    if (captionedBlob) {
+      files.push(new File([captionedBlob], `${baseName}_card.jpg`, { type: 'image/jpeg' }));
+    }
+  } catch (e) {
+    // 文字入り画像が作れなくても、写真とテキストの保存は続行する
+  }
+
+  saveBtn.disabled = false;
+
+  if (navigator.canShare && navigator.canShare({ files })) {
     try {
-      await navigator.share({ files: [imageFile, textFile], title: baseName });
+      await navigator.share({ files, title: baseName });
       statusEl.textContent = `共有シートから「ドライブ」を選び、hasune/${category || '(カテゴリ未選択)'}/${charName || '(キャラ名未入力)'} フォルダに保存してください。`;
     } catch (e) {
       statusEl.textContent = '共有がキャンセルされました。';
     }
   } else {
-    downloadFile(imageFile);
-    downloadFile(textFile);
+    files.forEach(downloadFile);
     statusEl.textContent = 'この端末では共有機能が使えないため、ファイルをダウンロードしました。手動でGoogleドライブアプリに移動してください。';
   }
 });
