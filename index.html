@@ -143,8 +143,9 @@ saveBtn.addEventListener('click', async () => {
   saveBtn.disabled = true;
 
   const imageFile = new File([file], `${baseName}.${ext}`, { type: file.type });
-  const textContent = `【カテゴリ】\n${category}\n\n【キャラ名】\n${charName}\n\n【キャッチコピー】\n${catchCopy}\n`;
-  const textFile = new File([textContent], `${baseName}.txt`, { type: 'text/plain' });
+  const BOM = String.fromCharCode(0xFEFF);
+  const textContent = `${BOM}【カテゴリ】\n${category}\n\n【キャラ名】\n${charName}\n\n【キャッチコピー】\n${catchCopy}\n`;
+  const textFile = new File([textContent], `${baseName}.txt`, { type: 'text/plain;charset=utf-8' });
 
   let files = [imageFile, textFile];
   try {
@@ -152,22 +153,20 @@ saveBtn.addEventListener('click', async () => {
     if (captionedBlob) {
       files.push(new File([captionedBlob], `${baseName}_card.jpg`, { type: 'image/jpeg' }));
     }
-  } catch (e) {
-    // 文字入り画像が作れなくても、写真とテキストの保存は続行する
-  }
 
-  saveBtn.disabled = false;
-
-  if (navigator.canShare && navigator.canShare({ files })) {
-    try {
-      await navigator.share({ files, title: baseName });
-      statusEl.textContent = `共有シートから「ドライブ」を選び、hasune/${category || '(カテゴリ未選択)'}/${charName || '(キャラ名未入力)'} フォルダに保存してください。`;
-    } catch (e) {
-      statusEl.textContent = '共有がキャンセルされました。';
+    if (navigator.canShare && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files });
+        statusEl.textContent = `共有シートから「ドライブ」を選び、hasune/${category || '(カテゴリ未選択)'}/${charName || '(キャラ名未入力)'} フォルダに保存してください。`;
+      } catch (e) {
+        statusEl.textContent = '共有がキャンセルされました。';
+      }
+    } else {
+      files.forEach(downloadFile);
+      statusEl.textContent = 'この端末では共有機能が使えないため、ファイルをダウンロードしました。手動でGoogleドライブアプリに移動してください。';
     }
-  } else {
-    files.forEach(downloadFile);
-    statusEl.textContent = 'この端末では共有機能が使えないため、ファイルをダウンロードしました。手動でGoogleドライブアプリに移動してください。';
+  } finally {
+    saveBtn.disabled = false;
   }
 });
 </script>
