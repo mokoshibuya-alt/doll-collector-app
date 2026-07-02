@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人形 素材保存</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px; background:#fafafa; color:#222; }
+  h1 { font-size: 1.3rem; }
+  label { display:block; margin-top: 18px; font-weight: bold; font-size: 0.95rem; }
+  input[type=text] { width: 100%; padding: 12px; font-size: 1rem; box-sizing: border-box; margin-top:6px; border:1px solid #ccc; border-radius:8px; }
+  input[type=file] { margin-top: 8px; }
+  img#preview { max-width: 100%; margin-top: 12px; border-radius: 10px; display:none; }
+  button { margin-top: 24px; width: 100%; padding: 15px; font-size: 1.1rem; background:#1a73e8; color:#fff; border:none; border-radius:10px; }
+  button:active { background:#1558b0; }
+  #status { margin-top: 14px; color: #555; font-size: 0.9rem; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>人形 素材保存</h1>
+
+<label for="photo">写真</label>
+<input type="file" id="photo" accept="image/*" capture="environment">
+<img id="preview" alt="preview">
+
+<label for="charname">キャラ名(マイクボタンで話してOK)</label>
+<input type="text" id="charname" placeholder="例: ゆって">
+
+<label for="catch">キャッチコピー(マイクボタンで話してOK)</label>
+<input type="text" id="catch" placeholder="例: 仕事休みたい言い訳がほしい人形">
+
+<button id="saveBtn">保存(共有)する</button>
+<div id="status"></div>
+
+<script>
+const photoInput = document.getElementById('photo');
+const preview = document.getElementById('preview');
+const charInput = document.getElementById('charname');
+const catchInput = document.getElementById('catch');
+const saveBtn = document.getElementById('saveBtn');
+const statusEl = document.getElementById('status');
+
+photoInput.addEventListener('change', () => {
+  const file = photoInput.files[0];
+  if (file) {
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = 'block';
+  }
+});
+
+function timestamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function downloadFile(file) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+saveBtn.addEventListener('click', async () => {
+  const file = photoInput.files[0];
+  if (!file) {
+    statusEl.textContent = '写真を選んでください';
+    return;
+  }
+
+  const charName = charInput.value.trim();
+  const catchCopy = catchInput.value.trim();
+  const ts = timestamp();
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const baseName = charName ? `${ts}_${charName}` : ts;
+
+  const imageFile = new File([file], `${baseName}.${ext}`, { type: file.type });
+  const textContent = `キャラ名: ${charName}\nキャッチコピー: ${catchCopy}\n`;
+  const textFile = new File([textContent], `${baseName}.txt`, { type: 'text/plain' });
+
+  if (navigator.canShare && navigator.canShare({ files: [imageFile, textFile] })) {
+    try {
+      await navigator.share({ files: [imageFile, textFile], title: baseName });
+      statusEl.textContent = '共有シートから「ドライブ」を選んで、人形素材フォルダに保存してください。';
+    } catch (e) {
+      statusEl.textContent = '共有がキャンセルされました。';
+    }
+  } else {
+    downloadFile(imageFile);
+    downloadFile(textFile);
+    statusEl.textContent = 'この端末では共有機能が使えないため、ファイルをダウンロードしました。手動でGoogleドライブアプリに移動してください。';
+  }
+});
+</script>
+</body>
+</html>
