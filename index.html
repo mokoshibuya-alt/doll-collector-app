@@ -8,7 +8,7 @@
   body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px; background:#fafafa; color:#222; }
   h1 { font-size: 1.3rem; }
   label { display:block; margin-top: 18px; font-weight: bold; font-size: 0.95rem; }
-  input[type=text] { width: 100%; padding: 12px; font-size: 1rem; box-sizing: border-box; margin-top:6px; border:1px solid #ccc; border-radius:8px; }
+  input[type=text], select { width: 100%; padding: 12px; font-size: 1rem; box-sizing: border-box; margin-top:6px; border:1px solid #ccc; border-radius:8px; background:#fff; }
   input[type=file] { margin-top: 8px; }
   img#preview { max-width: 100%; margin-top: 12px; border-radius: 10px; display:none; }
   button { margin-top: 24px; width: 100%; padding: 15px; font-size: 1.1rem; background:#1a73e8; color:#fff; border:none; border-radius:10px; }
@@ -23,6 +23,14 @@
 <input type="file" id="photo" accept="image/*" capture="environment">
 <img id="preview" alt="preview">
 
+<label for="category">カテゴリ</label>
+<select id="category">
+  <option value="jirori">jirori</option>
+  <option value="kao-charm">kao-charm</option>
+  <option value="__new__">＋ 新規カテゴリを入力</option>
+</select>
+<input type="text" id="newCategory" placeholder="新しいカテゴリ名(ローマ字推奨)" style="display:none; margin-top:8px;">
+
 <label for="charname">キャラ名(マイクボタンで話してOK)</label>
 <input type="text" id="charname" placeholder="例: ゆって">
 
@@ -35,10 +43,16 @@
 <script>
 const photoInput = document.getElementById('photo');
 const preview = document.getElementById('preview');
+const categorySelect = document.getElementById('category');
+const newCategoryInput = document.getElementById('newCategory');
 const charInput = document.getElementById('charname');
 const catchInput = document.getElementById('catch');
 const saveBtn = document.getElementById('saveBtn');
 const statusEl = document.getElementById('status');
+
+categorySelect.addEventListener('change', () => {
+  newCategoryInput.style.display = categorySelect.value === '__new__' ? 'block' : 'none';
+});
 
 photoInput.addEventListener('change', () => {
   const file = photoInput.files[0];
@@ -72,20 +86,22 @@ saveBtn.addEventListener('click', async () => {
     return;
   }
 
+  const category = categorySelect.value === '__new__' ? newCategoryInput.value.trim() : categorySelect.value;
   const charName = charInput.value.trim();
   const catchCopy = catchInput.value.trim();
   const ts = timestamp();
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-  const baseName = charName ? `${ts}_${charName}` : ts;
+  const parts = [category, charName, ts].filter(Boolean);
+  const baseName = parts.join('_');
 
   const imageFile = new File([file], `${baseName}.${ext}`, { type: file.type });
-  const textContent = `キャラ名: ${charName}\nキャッチコピー: ${catchCopy}\n`;
+  const textContent = `カテゴリ: ${category}\nキャラ名: ${charName}\nキャッチコピー: ${catchCopy}\n`;
   const textFile = new File([textContent], `${baseName}.txt`, { type: 'text/plain' });
 
   if (navigator.canShare && navigator.canShare({ files: [imageFile, textFile] })) {
     try {
       await navigator.share({ files: [imageFile, textFile], title: baseName });
-      statusEl.textContent = '共有シートから「ドライブ」を選んで、人形素材フォルダに保存してください。';
+      statusEl.textContent = `共有シートから「ドライブ」を選び、hasune/${category || '(カテゴリ未選択)'}/${charName || '(キャラ名未入力)'} フォルダに保存してください。`;
     } catch (e) {
       statusEl.textContent = '共有がキャンセルされました。';
     }
