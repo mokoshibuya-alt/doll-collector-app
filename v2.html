@@ -139,6 +139,7 @@
   <button class="menu" id="btnGoLog">📝 活動ログを保存する</button>
   <button class="menu" id="btnGoManage">⚙️ カテゴリ・キャラ管理</button>
   <p class="note" id="homeNote"></p>
+  <button class="secondary" id="btnRepickFolder" style="margin-top:24px; font-size:0.85rem; padding:10px;">保存先フォルダを選び直す(いま間違ったフォルダに保存されている場合)</button>
 </div>
 
 <!-- 人形登録画面 -->
@@ -503,9 +504,14 @@ document.getElementById('btnPickFolder').onclick = () => {
     .setTitle('hasune フォルダを選んでください')
     .setCallback(async (data) => {
       if (data.action !== google.picker.Action.PICKED) return;
-      rootFolderId = data.docs[0].id;
+      const picked = data.docs[0];
+      if (picked.name !== 'hasune') {
+        const ok = confirm('選んだフォルダは「' + picked.name + '」です。\n保存先は通常「hasune」フォルダです。\n本当にこのフォルダを保存先にしますか?\n\n(間違えた場合は「キャンセル」を押して、hasuneを選び直してください)');
+        if (!ok) { msg('setupMsg', 'もう一度「hasune フォルダを選ぶ」を押して選び直してください。'); return; }
+      }
+      rootFolderId = picked.id;
       localStorage.setItem(LS_FOLDER, rootFolderId);
-      msg('setupMsg', '「' + data.docs[0].name + '」を保存先に設定しました。準備中...', 'ok');
+      msg('setupMsg', '「' + picked.name + '」を保存先に設定しました。準備中...', 'ok');
       try { await afterSetup(); } catch (e) { msg('setupMsg', 'エラー: ' + e.message, 'error'); }
     })
     .build().setVisible(true);
@@ -528,6 +534,14 @@ function refreshHome() {
     '登録済み: ' + dolls.data.dolls.filter(d => !d.archived && d.visible !== false).length + '体';
   show('scr-home');
 }
+
+document.getElementById('btnRepickFolder').onclick = () => {
+  if (!confirm('保存先フォルダを選び直しますか?\n(登録済みのデータが消えることはありません)')) return;
+  rootFolderId = null;
+  localStorage.removeItem(LS_FOLDER);
+  msg('setupMsg', '');
+  show('scr-setup');
+};
 
 // ================= 人形登録 =================
 const regPhoto = document.getElementById('regPhoto');
