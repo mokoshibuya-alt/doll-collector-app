@@ -138,7 +138,6 @@
   <button class="menu" id="btnGoList">📚 保存済み一覧を見る</button>
   <button class="menu" id="btnGoLog">📝 活動ログを保存する</button>
   <button class="menu" id="btnGoManage">⚙️ カテゴリ・キャラ管理</button>
-  <button class="menu" id="btnGoMigrate">📥 既存ファイルの取り込み(移行)</button>
   <p class="note" id="homeNote"></p>
 </div>
 
@@ -1193,7 +1192,9 @@ function renderManageChars() {
 // ================= 既存ファイル取り込み(移行) =================
 let migrateFiles = []; // Pickerで選んだ {id, name, mimeType}
 
-document.getElementById('btnGoMigrate').onclick = () => {
+// 移行ツールはホームから非表示中(必要になったらホームにボタンを戻すだけで使える)
+const btnGoMigrate = document.getElementById('btnGoMigrate');
+if (btnGoMigrate) btnGoMigrate.onclick = () => {
   const activeDolls = dolls.data.dolls.filter(d => !d.archived);
   if (activeDolls.length === 0) {
     alert('先に「人形を登録する」からキャラクターを登録してください。\n(取り込んだファイルの紐付け先が必要です)');
