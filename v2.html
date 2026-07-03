@@ -138,6 +138,7 @@
   <button class="menu" id="btnGoList">📚 保存済み一覧を見る</button>
   <button class="menu" id="btnGoLog">📝 活動ログを保存する</button>
   <button class="menu" id="btnGoManage">⚙️ カテゴリ・キャラ管理</button>
+  <button class="menu" id="btnGoMigrate">📥 既存ファイルの取り込み(移行)</button>
   <p class="note" id="homeNote"></p>
 </div>
 
@@ -259,6 +260,37 @@
   <p class="note">名前を変えると、Googleドライブの実際のフォルダ名も一緒に変わります。行をタップすると中のキャラ一覧へ。</p>
   <div id="manageCats"></div>
   <div class="msg" id="manageMsg"></div>
+</div>
+
+<!-- 既存ファイル取り込み(移行)画面 -->
+<div class="screen" id="scr-migrate">
+  <button class="back" id="btnBackFromMigrate">← ホームへ戻る</button>
+  <h2>📥 既存ファイルの取り込み</h2>
+  <p class="note">共有シート時代に保存したファイルを、新しい台帳に取り込みます。
+    選んだファイルは、そのキャラの正しいフォルダ(profile/ または logs/)に自動で移動・整理されます。</p>
+
+  <button class="secondary" id="btnPickMigrateFiles">ファイルを選ぶ(複数選択できます)</button>
+  <div class="msg" id="migrateFileList"></div>
+
+  <div id="migrateOptions" style="display:none;">
+    <label for="migDoll">どのキャラのファイル?</label>
+    <select id="migDoll"></select>
+
+    <label>取り込み方法</label>
+    <div class="card" style="padding:12px;">
+      <label style="margin-top:0; font-weight:normal;">
+        <input type="radio" name="migType" value="log" checked>
+        活動ログとして取り込む(写真・動画は記録として追加、txtの中身はメモに入る)
+      </label>
+      <label style="font-weight:normal;">
+        <input type="radio" name="migType" value="profile">
+        代表写真(プロフィール)として取り込む(最初の写真1枚が代表写真になる)
+      </label>
+    </div>
+
+    <button id="btnRunMigrate">取り込む</button>
+  </div>
+  <div class="msg" id="migMsg"></div>
 </div>
 
 <div class="screen" id="scr-managechars">
@@ -1157,6 +1189,140 @@ function renderManageChars() {
     el.appendChild(item);
   }
 }
+
+// ================= 既存ファイル取り込み(移行) =================
+let migrateFiles = []; // Pickerで選んだ {id, name, mimeType}
+
+document.getElementById('btnGoMigrate').onclick = () => {
+  const activeDolls = dolls.data.dolls.filter(d => !d.archived);
+  if (activeDolls.length === 0) {
+    alert('先に「人形を登録する」からキャラクターを登録してください。\n(取り込んだファイルの紐付け先が必要です)');
+    return;
+  }
+  migrateFiles = [];
+  document.getElementById('migrateFileList').textContent = '';
+  document.getElementById('migrateOptions').style.display = 'none';
+  msg('migMsg', '');
+  const sel = document.getElementById('migDoll');
+  sel.innerHTML = '';
+  for (const d of activeDolls) {
+    const op = document.createElement('option');
+    op.value = d.id; op.textContent = d.name;
+    sel.appendChild(op);
+  }
+  show('scr-migrate');
+};
+document.getElementById('btnBackFromMigrate').onclick = () => refreshHome();
+
+document.getElementById('btnPickMigrateFiles').onclick = () => {
+  if (!pickerReady) { msg('migMsg', '準備中です。数秒待ってもう一度押してください。'); return; }
+  const view = new google.picker.DocsView()
+    .setIncludeFolders(true)
+    .setParent(rootFolderId);
+  new google.picker.PickerBuilder()
+    .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(API_KEY)
+    .setAppId(APP_ID)
+    .addView(view)
+    .setTitle('取り込む既存ファイルを選んでください(複数可)')
+    .setCallback((data) => {
+      if (data.action !== google.picker.Action.PICKED) return;
+      migrateFiles = data.docs.map(doc => ({ id: doc.id, name: doc.name, mimeType: doc.mimeType }));
+      document.getElementById('migrateFileList').textContent =
+        migrateFiles.length + '件選択:\n' + migrateFiles.map(f => '・' + f.name).join('\n');
+      document.getElementById('migrateOptions').style.display = 'block';
+    })
+    .build().setVisible(true);
+};
+
+async function getParents(fileId) {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?fields=parents');
+  return (await res.json()).parents || [];
+}
+
+document.getElementById('btnRunMigrate').onclick = async () => {
+  const btn = document.getElementById('btnRunMigrate');
+  const dollId = document.getElementById('migDoll').value;
+  const migType = document.querySelector('input[name="migType"]:checked').value;
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d || migrateFiles.length === 0) return;
+
+  const images = migrateFiles.filter(f => (f.mimeType || '').startsWith('image/'));
+  const videos = migrateFiles.filter(f => (f.mimeType || '').startsWith('video/'));
+  const texts = migrateFiles.filter(f => (f.mimeType || '') === 'text/plain' || f.name.toLowerCase().endsWith('.txt'));
+
+  if (migType === 'profile' && images.length === 0) {
+    msg('migMsg', '代表写真として取り込むには、写真を1枚以上選んでください', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    if (migType === 'profile') {
+      // 最初の画像を代表写真に。profile/ へ移動
+      const photo = images[0];
+      msg('migMsg', '代表写真として取り込み中...');
+      const oldParents = await getParents(photo.id);
+      await moveDriveFile(photo.id, d.profileFolderId, oldParents.join(','));
+      d.profilePhotoFileId = photo.id;
+      // カード画像らしきもの(_card)が同時に選ばれていれば一緒にprofileへ
+      for (const f of images.slice(1)) {
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, d.profileFolderId, p.join(','));
+        if (f.name.includes('_card')) d.profileCardFileId = f.id;
+      }
+      for (const f of texts) {
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, d.profileFolderId, p.join(','));
+        d.profileTextFileId = f.id;
+      }
+      d.updatedAt = new Date().toISOString();
+      await saveLedger(dolls);
+      msg('migMsg', `「${d.name}」の代表写真として取り込みました(profile/へ移動済み)`, 'ok');
+    } else {
+      // 活動ログとして取り込み。logs/ へ移動
+      msg('migMsg', 'ファイルを整理中...');
+      const logsFolderId = await ensureFolder(d.folderId, 'logs');
+      const media = [];
+      for (const f of [...images, ...videos]) {
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, logsFolderId, p.join(','));
+        media.push({ fileId: f.id, mimeType: f.mimeType, name: f.name });
+      }
+      // txtの中身をメモに取り込む
+      let memo = '';
+      for (const f of texts) {
+        try {
+          const body = await (await driveFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?alt=media')).text();
+          memo += (memo ? '\n---\n' : '') + body.replace(/^﻿/, '').trim();
+        } catch (e) { /* 読めないtxtはスキップ */ }
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, logsFolderId, p.join(','));
+      }
+      const now = new Date().toISOString();
+      logs.data.logs.push({
+        id: 'log-' + Date.now(),
+        dollId: d.id,
+        memo: memo || '(旧形式から取り込み)',
+        media,
+        textFileId: texts.length ? texts[0].id : null,
+        createdAt: now, updatedAt: now,
+        archived: false, archivedAt: null, archivedReason: null, visible: true,
+        attributes: { '取り込み元': '共有シート時代のファイル' }
+      });
+      await saveLedger(logs);
+      msg('migMsg', `「${d.name}」の活動ログとして取り込みました(写真・動画${media.length}件、logs/へ移動済み)`, 'ok');
+    }
+    migrateFiles = [];
+    document.getElementById('migrateFileList').textContent = '';
+    document.getElementById('migrateOptions').style.display = 'none';
+  } catch (e) {
+    msg('migMsg', '取り込みに失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 async function renameDoll(dollId) {
   const d = dolls.data.dolls.find(x => x.id === dollId);
