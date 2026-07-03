@@ -94,6 +94,19 @@
     font-size: 0.75rem; background: #f0e8e0; color: #7a6455;
     border-radius: 999px; padding: 4px 10px;
   }
+  .mini {
+    width: auto; padding: 6px 12px; font-size: 0.8rem; margin: 0;
+    background: #f0e8e0; color: #7a6455; border-radius: 8px;
+  }
+  .log-head { display: flex; justify-content: space-between; align-items: center; }
+  .danger { background: #b3574a; }
+  .manage-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .manage-item .label { cursor: pointer; flex: 1; min-width: 0; }
+  .manage-item .sub { font-size: 0.75rem; color: #999; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -124,7 +137,7 @@
   <button class="menu" id="btnGoRegister">📷 人形を登録する</button>
   <button class="menu" id="btnGoList">📚 保存済み一覧を見る</button>
   <button class="menu" id="btnGoLog">📝 活動ログを保存する</button>
-  <button class="menu" disabled>⚙️ カテゴリ・キャラ管理(準備中)</button>
+  <button class="menu" id="btnGoManage">⚙️ カテゴリ・キャラ管理</button>
   <p class="note" id="homeNote"></p>
 </div>
 
@@ -164,6 +177,7 @@
   <button class="back" id="btnBackFromDetail">← 一覧へ戻る</button>
   <div class="card">
     <div class="profile-head" id="detailProfile"></div>
+    <button class="secondary" id="btnEditDoll" style="margin-top:14px;">✏️ プロフィールを編集</button>
   </div>
   <h2>活動ログ</h2>
   <div id="detailLogs"></div>
@@ -192,6 +206,66 @@
 
   <button id="btnSaveLog">保存する</button>
   <div class="msg" id="logMsg"></div>
+</div>
+
+<!-- プロフィール編集画面 -->
+<div class="screen" id="scr-editdoll">
+  <button class="back" id="btnBackFromEditDoll">← 戻る</button>
+  <h2>✏️ プロフィールを編集</h2>
+
+  <label for="edPhoto">代表写真を差し替える(変えない場合はそのまま)</label>
+  <input type="file" id="edPhoto" accept="image/*">
+  <img id="edPreview" alt="" style="max-width:100%; margin-top:12px; border-radius:10px; display:none;">
+
+  <label for="edCategory">カテゴリ</label>
+  <select id="edCategory"></select>
+
+  <label for="edName">キャラ名</label>
+  <input type="text" id="edName">
+
+  <label for="edCatch">キャッチコピー</label>
+  <input type="text" id="edCatch">
+
+  <label>追加情報(自由項目)</label>
+  <div id="edAttrs"></div>
+  <button class="secondary" id="btnAddEdAttr">＋ 項目を追加</button>
+
+  <button id="btnSaveEditDoll">保存する</button>
+  <button class="danger" id="btnArchiveDoll">このキャラをアーカイブする(一覧から隠す)</button>
+  <div class="msg" id="edMsg"></div>
+</div>
+
+<!-- 活動ログ編集画面 -->
+<div class="screen" id="scr-editlog">
+  <button class="back" id="btnBackFromEditLog">← 戻る</button>
+  <h2>✏️ 活動ログを編集</h2>
+
+  <label for="elMemo">メモ</label>
+  <textarea id="elMemo"></textarea>
+
+  <label>追加情報(自由項目)</label>
+  <div id="elAttrs"></div>
+  <button class="secondary" id="btnAddElAttr">＋ 項目を追加</button>
+
+  <button id="btnSaveEditLog">保存する</button>
+  <button class="danger" id="btnArchiveLog">このログをアーカイブする(一覧から隠す)</button>
+  <div class="msg" id="elMsg"></div>
+</div>
+
+<!-- カテゴリ・キャラ管理画面 -->
+<div class="screen" id="scr-manage">
+  <button class="back" id="btnBackFromManage">← ホームへ戻る</button>
+  <h2>⚙️ カテゴリ管理</h2>
+  <p class="note">名前を変えると、Googleドライブの実際のフォルダ名も一緒に変わります。行をタップすると中のキャラ一覧へ。</p>
+  <div id="manageCats"></div>
+  <div class="msg" id="manageMsg"></div>
+</div>
+
+<div class="screen" id="scr-managechars">
+  <button class="back" id="btnBackFromManageChars">← カテゴリ一覧へ戻る</button>
+  <h2 id="manageCharsTitle">キャラクター</h2>
+  <div id="manageChars"></div>
+  <div class="msg" id="manageCharsMsg"></div>
 </div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -657,10 +731,17 @@ function openDetail(dollId) {
   for (const l of items) {
     const card = document.createElement('div');
     card.className = 'log-card';
+    const head = document.createElement('div');
+    head.className = 'log-head';
     const date = document.createElement('div');
     date.className = 'date';
     date.textContent = (l.createdAt || '').slice(0, 10);
-    card.appendChild(date);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'mini';
+    editBtn.textContent = '✏️ 編集';
+    editBtn.onclick = () => openEditLog(l.id);
+    head.append(date, editBtn);
+    card.appendChild(head);
     if (l.memo) {
       const memo = document.createElement('div');
       memo.className = 'memo';
@@ -720,7 +801,7 @@ logMedia.addEventListener('change', () => {
     files.length ? files.length + '件選択中: ' + files.map(f => f.name).join(', ') : '';
 });
 
-function addAttrRow(key, value) {
+function addAttrRow(containerId, key, value) {
   const row = document.createElement('div');
   row.className = 'attr-row';
   const kIn = document.createElement('input');
@@ -731,9 +812,19 @@ function addAttrRow(key, value) {
   del.className = 'del'; del.textContent = '✕';
   del.onclick = () => row.remove();
   row.append(kIn, vIn, del);
-  document.getElementById('logAttrs').appendChild(row);
+  document.getElementById(containerId).appendChild(row);
 }
-document.getElementById('btnAddAttr').onclick = () => addAttrRow();
+document.getElementById('btnAddAttr').onclick = () => addAttrRow('logAttrs');
+
+function collectAttrs(containerId) {
+  const attributes = {};
+  document.querySelectorAll('#' + containerId + ' .attr-row').forEach(row => {
+    const [kIn, vIn] = row.querySelectorAll('input');
+    const k = kIn.value.trim();
+    if (k) attributes[k] = vIn.value.trim();
+  });
+  return attributes;
+}
 
 function openLogForm(dollId, returnTo) {
   logReturnTo = returnTo;
@@ -771,12 +862,7 @@ document.getElementById('btnSaveLog').onclick = async () => {
   if (!d) { msg('logMsg', 'キャラクターを選んでください', 'error'); return; }
 
   // 自由項目を収集
-  const attributes = {};
-  document.querySelectorAll('#logAttrs .attr-row').forEach(row => {
-    const [kIn, vIn] = row.querySelectorAll('input');
-    const k = kIn.value.trim();
-    if (k) attributes[k] = vIn.value.trim();
-  });
+  const attributes = collectAttrs('logAttrs');
 
   btn.disabled = true;
   try {
@@ -822,6 +908,273 @@ document.getElementById('btnSaveLog').onclick = async () => {
     btn.disabled = false;
   }
 };
+
+// ================= Drive リネーム・移動 =================
+async function renameDriveFile(fileId, newName) {
+  await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: newName })
+  });
+}
+async function moveDriveFile(fileId, newParentId, oldParentId) {
+  await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId
+    + '?addParents=' + newParentId + '&removeParents=' + oldParentId, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+}
+
+// ================= プロフィール編集 =================
+const edPhoto = document.getElementById('edPhoto');
+const edPreview = document.getElementById('edPreview');
+edPhoto.addEventListener('change', () => {
+  const f = edPhoto.files[0];
+  if (f) { edPreview.src = URL.createObjectURL(f); edPreview.style.display = 'block'; }
+});
+document.getElementById('btnAddEdAttr').onclick = () => addAttrRow('edAttrs');
+document.getElementById('btnBackFromEditDoll').onclick = () => openDetail(currentDollId);
+document.getElementById('btnEditDoll').onclick = () => openEditDoll(currentDollId);
+
+function openEditDoll(dollId) {
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) return;
+  edPhoto.value = '';
+  edPreview.style.display = 'none';
+  const sel = document.getElementById('edCategory');
+  sel.innerHTML = '';
+  for (const c of settings.data.categories) {
+    const op = document.createElement('option');
+    op.value = c.id; op.textContent = c.name;
+    sel.appendChild(op);
+  }
+  sel.value = d.categoryId;
+  document.getElementById('edName').value = d.name;
+  document.getElementById('edCatch').value = d.catchcopy || '';
+  const attrsEl = document.getElementById('edAttrs');
+  attrsEl.innerHTML = '';
+  for (const k of Object.keys(d.attributes || {})) addAttrRow('edAttrs', k, d.attributes[k]);
+  msg('edMsg', '');
+  show('scr-editdoll');
+}
+
+document.getElementById('btnSaveEditDoll').onclick = async () => {
+  const btn = document.getElementById('btnSaveEditDoll');
+  const d = dolls.data.dolls.find(x => x.id === currentDollId);
+  if (!d) return;
+  const newName = document.getElementById('edName').value.trim();
+  const newCatch = document.getElementById('edCatch').value.trim();
+  const newCatId = document.getElementById('edCategory').value;
+  if (!newName) { msg('edMsg', 'キャラ名を入力してください', 'error'); return; }
+
+  btn.disabled = true;
+  try {
+    // キャラ名変更 → Driveのキャラフォルダ名も変更
+    if (newName !== d.name && d.folderId) {
+      msg('edMsg', 'フォルダ名を変更中...');
+      await renameDriveFile(d.folderId, newName);
+    }
+    // カテゴリ変更 → キャラフォルダを新カテゴリフォルダへ移動
+    if (newCatId !== d.categoryId) {
+      const oldCat = settings.data.categories.find(c => c.id === d.categoryId);
+      const newCat = settings.data.categories.find(c => c.id === newCatId);
+      if (newCat && d.folderId) {
+        msg('edMsg', 'カテゴリを移動中...');
+        if (!newCat.folderId) {
+          newCat.folderId = await ensureFolder(rootFolderId, newCat.name);
+          await saveLedger(settings);
+        }
+        await moveDriveFile(d.folderId, newCat.folderId, oldCat ? oldCat.folderId : rootFolderId);
+      }
+      d.categoryId = newCatId;
+    }
+    // 写真の差し替え(任意)
+    const newPhoto = edPhoto.files[0];
+    if (newPhoto) {
+      msg('edMsg', '新しい写真をアップロード中...');
+      const ts = timestamp();
+      const cat = settings.data.categories.find(c => c.id === d.categoryId);
+      const ext = (newPhoto.name.split('.').pop() || 'jpg').toLowerCase();
+      const baseName = [(cat ? cat.name : ''), newName, ts].filter(Boolean).join('_');
+      d.profilePhotoFileId = await uploadFile(d.profileFolderId, `${baseName}.${ext}`, newPhoto, newPhoto.type);
+      const cardBlob = await createCaptionedImage(newPhoto, newName, newCatch);
+      if (cardBlob) {
+        d.profileCardFileId = await uploadFile(d.profileFolderId, `${baseName}_card.jpg`, cardBlob, 'image/jpeg');
+      }
+    }
+    d.name = newName;
+    d.catchcopy = newCatch;
+    d.attributes = collectAttrs('edAttrs');
+    d.updatedAt = new Date().toISOString();
+    msg('edMsg', '台帳を更新中...');
+    await saveLedger(dolls);
+    msg('edMsg', '保存しました!', 'ok');
+    setTimeout(() => openDetail(currentDollId), 600);
+  } catch (e) {
+    msg('edMsg', '保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btnArchiveDoll').onclick = async () => {
+  const d = dolls.data.dolls.find(x => x.id === currentDollId);
+  if (!d) return;
+  if (!confirm(`「${d.name}」をアーカイブして一覧から隠しますか?\n(データやファイルは消えません。後から戻せます)`)) return;
+  const reason = prompt('理由をメモしておけます(空欄でもOK)', '') || null;
+  try {
+    d.archived = true;
+    d.archivedAt = new Date().toISOString();
+    d.archivedReason = reason;
+    d.updatedAt = d.archivedAt;
+    await saveLedger(dolls);
+    renderList();
+    show('scr-list');
+  } catch (e) {
+    msg('edMsg', 'アーカイブに失敗しました: ' + e.message, 'error');
+  }
+};
+
+// ================= 活動ログ編集 =================
+let currentLogId = null;
+document.getElementById('btnAddElAttr').onclick = () => addAttrRow('elAttrs');
+document.getElementById('btnBackFromEditLog').onclick = () => openDetail(currentDollId);
+
+function openEditLog(logId) {
+  currentLogId = logId;
+  const l = logs.data.logs.find(x => x.id === logId);
+  if (!l) return;
+  document.getElementById('elMemo').value = l.memo || '';
+  const attrsEl = document.getElementById('elAttrs');
+  attrsEl.innerHTML = '';
+  for (const k of Object.keys(l.attributes || {})) addAttrRow('elAttrs', k, l.attributes[k]);
+  msg('elMsg', '');
+  show('scr-editlog');
+}
+
+document.getElementById('btnSaveEditLog').onclick = async () => {
+  const btn = document.getElementById('btnSaveEditLog');
+  const l = logs.data.logs.find(x => x.id === currentLogId);
+  if (!l) return;
+  btn.disabled = true;
+  try {
+    l.memo = document.getElementById('elMemo').value.trim();
+    l.attributes = collectAttrs('elAttrs');
+    l.updatedAt = new Date().toISOString();
+    await saveLedger(logs);
+    msg('elMsg', '保存しました!', 'ok');
+    setTimeout(() => openDetail(currentDollId), 600);
+  } catch (e) {
+    msg('elMsg', '保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btnArchiveLog').onclick = async () => {
+  const l = logs.data.logs.find(x => x.id === currentLogId);
+  if (!l) return;
+  if (!confirm('このログをアーカイブして一覧から隠しますか?\n(ファイルは消えません)')) return;
+  try {
+    l.archived = true;
+    l.archivedAt = new Date().toISOString();
+    l.updatedAt = l.archivedAt;
+    await saveLedger(logs);
+    openDetail(currentDollId);
+  } catch (e) {
+    msg('elMsg', 'アーカイブに失敗しました: ' + e.message, 'error');
+  }
+};
+
+// ================= カテゴリ・キャラ管理 =================
+let manageCatId = null;
+document.getElementById('btnGoManage').onclick = () => { renderManageCats(); show('scr-manage'); };
+document.getElementById('btnBackFromManage').onclick = () => refreshHome();
+document.getElementById('btnBackFromManageChars').onclick = () => { renderManageCats(); show('scr-manage'); };
+
+function renderManageCats() {
+  const el = document.getElementById('manageCats');
+  el.innerHTML = '';
+  msg('manageMsg', settings.data.categories.length === 0 ? 'まだカテゴリがありません。' : '');
+  for (const c of settings.data.categories) {
+    const count = dolls.data.dolls.filter(d => d.categoryId === c.id && !d.archived).length;
+    const item = document.createElement('div');
+    item.className = 'manage-item';
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.innerHTML = '<div></div><div class="sub"></div>';
+    label.children[0].textContent = c.name;
+    label.children[1].textContent = count + '体';
+    label.onclick = () => { manageCatId = c.id; renderManageChars(); show('scr-managechars'); };
+    const btn = document.createElement('button');
+    btn.className = 'mini';
+    btn.textContent = '✏️ 名前変更';
+    btn.onclick = () => renameCategory(c.id);
+    item.append(label, btn);
+    el.appendChild(item);
+  }
+}
+
+async function renameCategory(catId) {
+  const c = settings.data.categories.find(x => x.id === catId);
+  if (!c) return;
+  const newName = prompt('新しいカテゴリ名', c.name);
+  if (!newName || newName.trim() === '' || newName.trim() === c.name) return;
+  try {
+    msg('manageMsg', '変更中...');
+    if (c.folderId) await renameDriveFile(c.folderId, newName.trim());
+    c.name = newName.trim();
+    await saveLedger(settings);
+    renderManageCats();
+    msg('manageMsg', '変更しました(ドライブのフォルダ名も変更済み)', 'ok');
+  } catch (e) {
+    msg('manageMsg', '変更に失敗しました: ' + e.message, 'error');
+  }
+}
+
+function renderManageChars() {
+  const c = settings.data.categories.find(x => x.id === manageCatId);
+  document.getElementById('manageCharsTitle').textContent = (c ? c.name : '') + ' のキャラクター';
+  const el = document.getElementById('manageChars');
+  el.innerHTML = '';
+  const items = dolls.data.dolls.filter(d => d.categoryId === manageCatId && !d.archived);
+  msg('manageCharsMsg', items.length === 0 ? 'このカテゴリにはまだキャラクターがいません。' : '');
+  for (const d of items) {
+    const item = document.createElement('div');
+    item.className = 'manage-item';
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.innerHTML = '<div></div><div class="sub"></div>';
+    label.children[0].textContent = d.name;
+    label.children[1].textContent = d.catchcopy || '';
+    label.onclick = () => openDetail(d.id);
+    const btn = document.createElement('button');
+    btn.className = 'mini';
+    btn.textContent = '✏️ 名前変更';
+    btn.onclick = () => renameDoll(d.id);
+    item.append(label, btn);
+    el.appendChild(item);
+  }
+}
+
+async function renameDoll(dollId) {
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) return;
+  const newName = prompt('新しいキャラ名', d.name);
+  if (!newName || newName.trim() === '' || newName.trim() === d.name) return;
+  try {
+    msg('manageCharsMsg', '変更中...');
+    if (d.folderId) await renameDriveFile(d.folderId, newName.trim());
+    d.name = newName.trim();
+    d.updatedAt = new Date().toISOString();
+    await saveLedger(dolls);
+    renderManageChars();
+    msg('manageCharsMsg', '変更しました(ドライブのフォルダ名も変更済み)', 'ok');
+  } catch (e) {
+    msg('manageCharsMsg', '変更に失敗しました: ' + e.message, 'error');
+  }
+}
 </script>
 </body>
 </html>
