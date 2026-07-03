@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技術検証 - 人形素材保存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background: #f5f0eb;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 16px;
+    color: #333;
+  }
+  h1 { font-size: 1.2rem; margin: 8px 0 4px; }
+  p.note { font-size: 0.8rem; color: #777; margin-bottom: 16px; }
+  .step {
+    background: #fff;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .step h2 { font-size: 0.95rem; margin-bottom: 8px; }
+  .step button {
+    background: #8b6f5c;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .step button:disabled { background: #ccc; cursor: default; }
+  .status { display: inline-block; margin-left: 8px; font-size: 0.85rem; }
+  .ok { color: #2e7d32; }
+  .ng { color: #c62828; }
+  #log {
+    background: #222;
+    color: #ddd;
+    font-family: Consolas, monospace;
+    font-size: 0.75rem;
+    padding: 10px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 120px;
+    max-height: 320px;
+    overflow-y: auto;
+    margin-top: 12px;
+  }
+  #log .t-ok { color: #8bc34a; }
+  #log .t-ng { color: #ef5350; }
+</style>
+</head>
+<body>
+<h1>技術検証ページ(drive.file + Picker)</h1>
+<p class="note">上から順にボタンを押して、それぞれ成功するか確認します。結果は下の黒い画面に記録されます。</p>
+
+<div class="step">
+  <h2>[1] Googleでログイン(drive.fileスコープ)</h2>
+  <button id="btn1">ログイン</button><span class="status" id="st1"></span>
+</div>
+
+<div class="step">
+  <h2>[2] Pickerで hasune フォルダを選択</h2>
+  <button id="btn2" disabled>フォルダを選ぶ</button><span class="status" id="st2"></span>
+</div>
+
+<div class="step">
+  <h2>[3] 選択したフォルダIDを保存・表示</h2>
+  <button id="btn3" disabled>IDを確認</button><span class="status" id="st3"></span>
+</div>
+
+<div class="step">
+  <h2>[4] フォルダ配下のファイル一覧を取得(既存ファイルが見えるか)</h2>
+  <button id="btn4" disabled>一覧を取得</button><span class="status" id="st4"></span>
+</div>
+
+<div class="step">
+  <h2>[5] Pickerで既存ファイルを個別選択して読む(移行方式の検証)</h2>
+  <button id="btn5" disabled>ファイルを選んで読む</button><span class="status" id="st5"></span>
+</div>
+
+<div class="step">
+  <h2>[6] _db フォルダを作成し dolls.json(テスト)を書き込む</h2>
+  <button id="btn6" disabled>書き込む</button><span class="status" id="st6"></span>
+</div>
+
+<div class="step">
+  <h2>[7] 書き込んだ dolls.json を読み込み直す</h2>
+  <button id="btn7" disabled>読み込む</button><span class="status" id="st7"></span>
+</div>
+
+<div id="log">ここに結果が表示されます。
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
+<script>
+const CLIENT_ID = '919551401625-di6e36s8s42t93lknnpj3ma3g16meg9t.apps.googleusercontent.com';
+const API_KEY = 'AIzaSyCiV3u6SwdOLS8S-GmMAWRua2BxcgNzLJQ';
+const APP_ID = '919551401625'; // プロジェクト番号
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+let accessToken = null;
+let tokenClient = null;
+let pickerReady = false;
+let folderId = localStorage.getItem('hasuneFolderId') || null;
+let folderName = localStorage.getItem('hasuneFolderName') || null;
+let dbFolderId = null;
+let dollsFileId = null;
+
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.textContent = msg + '\n';
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setStatus(n, ok, text) {
+  const el = document.getElementById('st' + n);
+  el.textContent = (ok ? '✅ ' : '❌ ') + (text || (ok ? '成功' : '失敗'));
+  el.className = 'status ' + (ok ? 'ok' : 'ng');
+}
+function enable(...nums) { nums.forEach(n => document.getElementById('btn' + n).disabled = false); }
+
+async function driveFetch(url, options) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Authorization': 'Bearer ' + accessToken, ...(options && options.headers) }
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error('HTTP ' + res.status + ': ' + body.slice(0, 300));
+  }
+  return res;
+}
+
+// ---- [1] ログイン ----
+document.getElementById('btn1').onclick = () => {
+  try {
+    if (!tokenClient) {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPE,
+        callback: (resp) => {
+          if (resp.error) {
+            log('[1] ログイン失敗: ' + JSON.stringify(resp), 't-ng');
+            setStatus(1, false, resp.error);
+            return;
+          }
+          accessToken = resp.access_token;
+          log('[1] ログイン成功。アクセストークン取得(先頭のみ表示): ' + accessToken.slice(0, 12) + '...', 't-ok');
+          setStatus(1, true);
+          gapi.load('picker', () => {
+            pickerReady = true;
+            log('[1] Picker ライブラリ読み込み完了', 't-ok');
+          });
+          enable(2);
+          if (folderId) {
+            log('[前回保存] フォルダID: ' + folderId + ' (' + (folderName || '名前不明') + ')');
+            enable(3, 4, 5, 6);
+          }
+        }
+      });
+    }
+    tokenClient.requestAccessToken();
+  } catch (e) {
+    log('[1] エラー: ' + e.message, 't-ng');
+    setStatus(1, false, e.message);
+  }
+};
+
+// ---- [2] フォルダ選択 ----
+document.getElementById('btn2').onclick = () => {
+  if (!pickerReady) { log('[2] Pickerがまだ準備中です。数秒待って再度押してください。', 't-ng'); return; }
+  const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+    .setSelectFolderEnabled(true)
+    .setIncludeFolders(true)
+    .setMimeTypes('application/vnd.google-apps.folder');
+  const picker = new google.picker.PickerBuilder()
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(API_KEY)
+    .setAppId(APP_ID)
+    .addView(view)
+    .setTitle('hasune フォルダを選んでください')
+    .setCallback((data) => {
+      if (data.action === google.picker.Action.PICKED) {
+        const doc = data.docs[0];
+        folderId = doc.id;
+        folderName = doc.name;
+        localStorage.setItem('hasuneFolderId', folderId);
+        localStorage.setItem('hasuneFolderName', folderName);
+        log('[2] フォルダ選択: 「' + folderName + '」 id=' + folderId, 't-ok');
+        setStatus(2, true, folderName);
+        enable(3, 4, 5, 6);
+      } else if (data.action === google.picker.Action.CANCEL) {
+        log('[2] キャンセルされました');
+      }
+    })
+    .build();
+  picker.setVisible(true);
+};
+
+// ---- [3] フォルダID確認 ----
+document.getElementById('btn3').onclick = async () => {
+  try {
+    log('[3] localStorage上のID: ' + folderId);
+    const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + folderId + '?fields=id,name,mimeType');
+    const meta = await res.json();
+    log('[3] APIでフォルダ情報取得成功: ' + JSON.stringify(meta), 't-ok');
+    setStatus(3, true, meta.name);
+  } catch (e) {
+    log('[3] 失敗: ' + e.message, 't-ng');
+    setStatus(3, false);
+  }
+};
+
+// ---- [4] ファイル一覧 ----
+document.getElementById('btn4').onclick = async () => {
+  try {
+    const q = encodeURIComponent("'" + folderId + "' in parents and trashed=false");
+    const res = await driveFetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name,mimeType)&pageSize=100');
+    const data = await res.json();
+    const files = data.files || [];
+    log('[4] 一覧取得成功。見えたファイル/フォルダ数: ' + files.length, 't-ok');
+    files.forEach(f => log('    - ' + f.name + ' (' + f.mimeType + ')'));
+    if (files.length === 0) {
+      log('[4] ※0件 = 「他アプリが作った既存ファイルはフォルダ選択だけでは見えない」ことの確認になります(想定通りの挙動)。');
+    }
+    setStatus(4, true, files.length + '件');
+  } catch (e) {
+    log('[4] 失敗: ' + e.message, 't-ng');
+    setStatus(4, false);
+  }
+};
+
+// ---- [5] 既存ファイルを個別選択して読む ----
+document.getElementById('btn5').onclick = () => {
+  if (!pickerReady) { log('[5] Pickerがまだ準備中です。', 't-ng'); return; }
+  const view = new google.picker.DocsView()
+    .setIncludeFolders(true)
+    .setParent(folderId || undefined);
+  const picker = new google.picker.PickerBuilder()
+    .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(API_KEY)
+    .setAppId(APP_ID)
+    .addView(view)
+    .setTitle('既存のファイルを選んでください(複数可)')
+    .setCallback(async (data) => {
+      if (data.action !== google.picker.Action.PICKED) return;
+      log('[5] ' + data.docs.length + '件 選択されました');
+      for (const doc of data.docs) {
+        try {
+          const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + doc.id + '?fields=id,name,mimeType,size');
+          const meta = await res.json();
+          log('[5] メタ情報取得OK: ' + meta.name + ' (' + meta.mimeType + ', ' + (meta.size || '?') + ' bytes)', 't-ok');
+          if (meta.mimeType === 'text/plain') {
+            const body = await (await driveFetch('https://www.googleapis.com/drive/v3/files/' + doc.id + '?alt=media')).text();
+            log('[5] txt中身(先頭200文字):\n' + body.slice(0, 200), 't-ok');
+          }
+        } catch (e) {
+          log('[5] ' + doc.name + ' の読み込み失敗: ' + e.message, 't-ng');
+        }
+      }
+      setStatus(5, true, data.docs.length + '件確認');
+      enable(6);
+    })
+    .build();
+  picker.setVisible(true);
+};
+
+// ---- [6] _dbフォルダ作成 + dolls.json書き込み ----
+document.getElementById('btn6').onclick = async () => {
+  try {
+    // _dbフォルダを検索、なければ作成
+    const q = encodeURIComponent("'" + folderId + "' in parents and name='_db' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+    const found = await (await driveFetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name)')).json();
+    if (found.files && found.files.length > 0) {
+      dbFolderId = found.files[0].id;
+      log('[6] 既存の _db フォルダを発見: ' + dbFolderId);
+    } else {
+      const res = await driveFetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '_db', mimeType: 'application/vnd.google-apps.folder', parents: [folderId] })
+      });
+      const created = await res.json();
+      dbFolderId = created.id;
+      log('[6] _db フォルダ作成成功: ' + dbFolderId, 't-ok');
+    }
+    // dolls.json をmultipartで作成
+    const testData = {
+      schemaVersion: 1,
+      createdBy: 'verify.html',
+      createdAt: new Date().toISOString(),
+      dolls: [{ id: 'test-doll', name: '検証用データ', catchcopy: 'これはテストです' }]
+    };
+    const boundary = 'boundary_' + Date.now();
+    const body =
+      '--' + boundary + '\r\n' +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify({ name: 'dolls_test.json', parents: [dbFolderId], mimeType: 'application/json' }) + '\r\n' +
+      '--' + boundary + '\r\n' +
+      'Content-Type: application/json\r\n\r\n' +
+      JSON.stringify(testData, null, 2) + '\r\n' +
+      '--' + boundary + '--';
+    const up = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+      method: 'POST',
+      headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+      body: body
+    });
+    const file = await up.json();
+    dollsFileId = file.id;
+    log('[6] dolls_test.json 書き込み成功: id=' + dollsFileId, 't-ok');
+    setStatus(6, true);
+    enable(7);
+  } catch (e) {
+    log('[6] 失敗: ' + e.message, 't-ng');
+    setStatus(6, false);
+  }
+};
+
+// ---- [7] 読み戻し ----
+document.getElementById('btn7').onclick = async () => {
+  try {
+    const body = await (await driveFetch('https://www.googleapis.com/drive/v3/files/' + dollsFileId + '?alt=media')).text();
+    log('[7] 読み込み成功。中身:\n' + body, 't-ok');
+    setStatus(7, true);
+    log('=== 全検証項目が完了しました。この画面のスクショまたは結果を報告してください ===', 't-ok');
+  } catch (e) {
+    log('[7] 失敗: ' + e.message, 't-ng');
+    setStatus(7, false);
+  }
+};
+</script>
+</body>
+</html>
