@@ -56,6 +56,44 @@
   .doll-item .catch { font-size: 0.85rem; color: #777; margin-top: 2px; }
   .doll-item .cat { font-size: 0.75rem; color: #a08b7a; margin-top: 4px; }
   .note { font-size: 0.8rem; color: #999; margin-top: 8px; }
+  .doll-item { cursor: pointer; }
+  textarea {
+    width: 100%; padding: 12px; font-size: 1rem; margin-top: 6px;
+    border: 1px solid #ccc; border-radius: 8px; background: #fff; min-height: 70px;
+    font-family: inherit;
+  }
+  .attr-row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .attr-row input { margin-top: 0; }
+  .attr-row .del {
+    width: 40px; padding: 10px 0; margin: 0; flex-shrink: 0;
+    background: #eee; color: #666; border-radius: 8px; font-size: 1rem;
+  }
+  .profile-head { display: flex; gap: 14px; align-items: center; }
+  .profile-head img {
+    width: 96px; height: 96px; object-fit: cover; border-radius: 12px; background: #eee;
+    flex-shrink: 0;
+  }
+  .profile-head .name { font-weight: bold; font-size: 1.1rem; }
+  .profile-head .catch { font-size: 0.9rem; color: #777; margin-top: 4px; }
+  .profile-head .cat { font-size: 0.8rem; color: #a08b7a; margin-top: 6px; }
+  .log-card {
+    background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .log-card .date { font-size: 0.75rem; color: #999; }
+  .log-card .memo { margin-top: 6px; font-size: 0.95rem; white-space: pre-wrap; }
+  .log-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .log-thumbs img, .log-thumbs .video-chip {
+    width: 84px; height: 84px; object-fit: cover; border-radius: 8px; background: #eee;
+  }
+  .log-thumbs .video-chip {
+    display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+  }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chip {
+    font-size: 0.75rem; background: #f0e8e0; color: #7a6455;
+    border-radius: 999px; padding: 4px 10px;
+  }
 </style>
 </head>
 <body>
@@ -85,7 +123,7 @@
   <h1>人形コレクション</h1>
   <button class="menu" id="btnGoRegister">📷 人形を登録する</button>
   <button class="menu" id="btnGoList">📚 保存済み一覧を見る</button>
-  <button class="menu" disabled>📝 活動ログを保存する(準備中)</button>
+  <button class="menu" id="btnGoLog">📝 活動ログを保存する</button>
   <button class="menu" disabled>⚙️ カテゴリ・キャラ管理(準備中)</button>
   <p class="note" id="homeNote"></p>
 </div>
@@ -119,6 +157,41 @@
   <h2>📚 保存済み一覧</h2>
   <div id="dollList"></div>
   <div class="msg" id="listMsg"></div>
+</div>
+
+<!-- キャラクター詳細画面 -->
+<div class="screen" id="scr-detail">
+  <button class="back" id="btnBackFromDetail">← 一覧へ戻る</button>
+  <div class="card">
+    <div class="profile-head" id="detailProfile"></div>
+  </div>
+  <h2>活動ログ</h2>
+  <div id="detailLogs"></div>
+  <div class="msg" id="detailMsg"></div>
+  <button id="btnAddLogFromDetail">＋ 活動ログを追加</button>
+</div>
+
+<!-- 活動ログ保存画面 -->
+<div class="screen" id="scr-log">
+  <button class="back" id="btnBackFromLog">← 戻る</button>
+  <h2>📝 活動ログを保存する</h2>
+
+  <label for="logDoll">どの子の記録?</label>
+  <select id="logDoll"></select>
+
+  <label for="logMedia">写真・動画(複数選べます)</label>
+  <input type="file" id="logMedia" accept="image/*,video/*" multiple>
+  <div id="logMediaInfo" class="note"></div>
+
+  <label for="logMemo">メモ(マイクボタンで話してOK)</label>
+  <textarea id="logMemo" placeholder="例: パン屋さんにおでかけしました"></textarea>
+
+  <label>追加情報(自由項目)</label>
+  <div id="logAttrs"></div>
+  <button class="secondary" id="btnAddAttr">＋ 項目を追加</button>
+
+  <button id="btnSaveLog">保存する</button>
+  <div class="msg" id="logMsg"></div>
 </div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -213,9 +286,27 @@ async function ensureFolder(parentId, name) {
   return found ? found.id : await createFolder(parentId, name);
 }
 
-// multipart アップロード(新規作成)。fileBlob は Blob/File
+// アップロード(新規作成)。fileBlob は Blob/File
+// 5MB近辺以上は multipart が使えない(API仕様)ため resumable 方式に切り替える
 async function uploadFile(parentId, name, fileBlob, mimeType) {
-  const meta = { name, parents: [parentId], mimeType: mimeType || fileBlob.type };
+  const meta = { name, parents: [parentId], mimeType: mimeType || fileBlob.type || 'application/octet-stream' };
+  if (fileBlob.size > 4 * 1024 * 1024) {
+    const init = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': meta.mimeType
+      },
+      body: JSON.stringify(meta)
+    });
+    const location = init.headers.get('Location');
+    const up = await driveFetch(location, {
+      method: 'PUT',
+      headers: { 'Content-Type': meta.mimeType },
+      body: fileBlob
+    });
+    return (await up.json()).id;
+  }
   const boundary = 'b' + Date.now() + Math.random().toString(36).slice(2);
   const body = new Blob([
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
@@ -520,6 +611,7 @@ async function renderList() {
     info.querySelector('.catch').textContent = d.catchcopy || '';
     info.querySelector('.cat').textContent = cat ? cat.name : d.categoryId;
     div.appendChild(info);
+    div.onclick = () => openDetail(d.id);
     listEl.appendChild(div);
     // サムネイルは非同期で読み込み
     if (d.profilePhotoFileId) {
@@ -530,6 +622,206 @@ async function renderList() {
     }
   }
 }
+
+// ================= キャラクター詳細 =================
+let currentDollId = null;
+
+document.getElementById('btnBackFromDetail').onclick = () => { renderList(); show('scr-list'); };
+document.getElementById('btnAddLogFromDetail').onclick = () => openLogForm(currentDollId, 'detail');
+
+function openDetail(dollId) {
+  currentDollId = dollId;
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) return;
+  const cat = settings.data.categories.find(c => c.id === d.categoryId);
+
+  // プロフィール
+  const prof = document.getElementById('detailProfile');
+  prof.innerHTML = '<img alt=""><div><div class="name"></div><div class="catch"></div><div class="cat"></div></div>';
+  prof.querySelector('.name').textContent = d.name;
+  prof.querySelector('.catch').textContent = d.catchcopy || '';
+  prof.querySelector('.cat').textContent = cat ? cat.name : d.categoryId;
+  if (d.profilePhotoFileId) {
+    driveFetch('https://www.googleapis.com/drive/v3/files/' + d.profilePhotoFileId + '?alt=media')
+      .then(r => r.blob()).then(b => { prof.querySelector('img').src = URL.createObjectURL(b); })
+      .catch(() => {});
+  }
+
+  // 活動ログ一覧(新しい順)
+  const logsEl = document.getElementById('detailLogs');
+  logsEl.innerHTML = '';
+  const items = logs.data.logs
+    .filter(l => l.dollId === dollId && !l.archived && l.visible !== false)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  msg('detailMsg', items.length === 0 ? 'まだ活動ログがありません。' : '');
+  for (const l of items) {
+    const card = document.createElement('div');
+    card.className = 'log-card';
+    const date = document.createElement('div');
+    date.className = 'date';
+    date.textContent = (l.createdAt || '').slice(0, 10);
+    card.appendChild(date);
+    if (l.memo) {
+      const memo = document.createElement('div');
+      memo.className = 'memo';
+      memo.textContent = l.memo;
+      card.appendChild(memo);
+    }
+    if (l.media && l.media.length) {
+      const thumbs = document.createElement('div');
+      thumbs.className = 'log-thumbs';
+      for (const m of l.media) {
+        if ((m.mimeType || '').startsWith('video/')) {
+          const v = document.createElement('div');
+          v.className = 'video-chip';
+          v.textContent = '🎬';
+          thumbs.appendChild(v);
+        } else {
+          const im = document.createElement('img');
+          thumbs.appendChild(im);
+          driveFetch('https://www.googleapis.com/drive/v3/files/' + m.fileId + '?alt=media')
+            .then(r => r.blob()).then(b => { im.src = URL.createObjectURL(b); })
+            .catch(() => {});
+        }
+      }
+      card.appendChild(thumbs);
+    }
+    const attrs = l.attributes || {};
+    const keys = Object.keys(attrs);
+    if (keys.length) {
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      for (const k of keys) {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = k + ': ' + attrs[k];
+        chips.appendChild(chip);
+      }
+      card.appendChild(chips);
+    }
+    logsEl.appendChild(card);
+  }
+  show('scr-detail');
+}
+
+// ================= 活動ログ保存 =================
+let logReturnTo = 'home';
+
+document.getElementById('btnGoLog').onclick = () => openLogForm(null, 'home');
+document.getElementById('btnBackFromLog').onclick = () => {
+  if (logReturnTo === 'detail' && currentDollId) openDetail(currentDollId);
+  else refreshHome();
+};
+
+const logMedia = document.getElementById('logMedia');
+logMedia.addEventListener('change', () => {
+  const files = Array.from(logMedia.files);
+  document.getElementById('logMediaInfo').textContent =
+    files.length ? files.length + '件選択中: ' + files.map(f => f.name).join(', ') : '';
+});
+
+function addAttrRow(key, value) {
+  const row = document.createElement('div');
+  row.className = 'attr-row';
+  const kIn = document.createElement('input');
+  kIn.type = 'text'; kIn.placeholder = '項目名(例: イベント種別)'; kIn.value = key || '';
+  const vIn = document.createElement('input');
+  vIn.type = 'text'; vIn.placeholder = '値(例: 販売)'; vIn.value = value || '';
+  const del = document.createElement('button');
+  del.className = 'del'; del.textContent = '✕';
+  del.onclick = () => row.remove();
+  row.append(kIn, vIn, del);
+  document.getElementById('logAttrs').appendChild(row);
+}
+document.getElementById('btnAddAttr').onclick = () => addAttrRow();
+
+function openLogForm(dollId, returnTo) {
+  logReturnTo = returnTo;
+  const activeDolls = dolls.data.dolls.filter(d => !d.archived && d.visible !== false);
+  if (activeDolls.length === 0) {
+    alert('先に「人形を登録する」からキャラクターを登録してください。');
+    return;
+  }
+  const sel = document.getElementById('logDoll');
+  sel.innerHTML = '';
+  for (const d of activeDolls) {
+    const op = document.createElement('option');
+    op.value = d.id; op.textContent = d.name;
+    sel.appendChild(op);
+  }
+  if (dollId) sel.value = dollId;
+  logMedia.value = '';
+  document.getElementById('logMediaInfo').textContent = '';
+  document.getElementById('logMemo').value = '';
+  document.getElementById('logAttrs').innerHTML = '';
+  msg('logMsg', '');
+  show('scr-log');
+}
+
+document.getElementById('btnSaveLog').onclick = async () => {
+  const btn = document.getElementById('btnSaveLog');
+  const dollId = document.getElementById('logDoll').value;
+  const memo = document.getElementById('logMemo').value.trim();
+  const files = Array.from(logMedia.files);
+  if (files.length === 0 && !memo) {
+    msg('logMsg', '写真・動画かメモのどちらかは入れてください', 'error');
+    return;
+  }
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) { msg('logMsg', 'キャラクターを選んでください', 'error'); return; }
+
+  // 自由項目を収集
+  const attributes = {};
+  document.querySelectorAll('#logAttrs .attr-row').forEach(row => {
+    const [kIn, vIn] = row.querySelectorAll('input');
+    const k = kIn.value.trim();
+    if (k) attributes[k] = vIn.value.trim();
+  });
+
+  btn.disabled = true;
+  try {
+    msg('logMsg', 'フォルダを準備中...');
+    const logsFolderId = await ensureFolder(d.folderId, 'logs');
+    const ts = timestamp();
+    const media = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      msg('logMsg', `アップロード中... (${i + 1}/${files.length}) ${f.name}\n(動画は時間がかかることがあります)`);
+      const ext = (f.name.split('.').pop() || 'bin').toLowerCase();
+      const fname = `${d.name}_log_${ts}_${String(i + 1).padStart(2, '0')}.${ext}`;
+      const fileId = await uploadFile(logsFolderId, fname, f, f.type);
+      media.push({ fileId, mimeType: f.type, name: fname });
+    }
+
+    // 人間が読める控えのtxt
+    msg('logMsg', '記録を保存中...');
+    const BOM = String.fromCharCode(0xFEFF);
+    let text = `${BOM}【キャラ名】\n${d.name}\n\n【メモ】\n${memo}\n`;
+    for (const k of Object.keys(attributes)) text += `\n【${k}】\n${attributes[k]}\n`;
+    const textFileId = await uploadFile(logsFolderId, `${d.name}_log_${ts}.txt`,
+      new Blob([text], { type: 'text/plain' }), 'text/plain');
+
+    const now = new Date().toISOString();
+    logs.data.logs.push({
+      id: 'log-' + Date.now(),
+      dollId, memo, media, textFileId,
+      createdAt: now, updatedAt: now,
+      archived: false, archivedAt: null, archivedReason: null, visible: true,
+      attributes
+    });
+    await saveLedger(logs);
+
+    msg('logMsg', `「${d.name}」の活動ログを保存しました!(写真・動画 ${media.length}件)`, 'ok');
+    logMedia.value = '';
+    document.getElementById('logMediaInfo').textContent = '';
+    document.getElementById('logMemo').value = '';
+    document.getElementById('logAttrs').innerHTML = '';
+  } catch (e) {
+    msg('logMsg', '保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
 </script>
 </body>
 </html>
