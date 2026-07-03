@@ -309,6 +309,7 @@ const API_KEY = 'AIzaSyCiV3u6SwdOLS8S-GmMAWRua2BxcgNzLJQ';
 const APP_ID = '919551401625';
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const LS_FOLDER = 'dollapp_hasuneFolderId';
+const LS_FOLDER_NAME = 'dollapp_hasuneFolderName';
 
 // ================= 状態 =================
 let accessToken = null;
@@ -477,11 +478,16 @@ document.getElementById('btnLogin').onclick = async () => {
     // 保存済みフォルダIDが有効か確認
     if (rootFolderId) {
       try {
-        await driveFetch('https://www.googleapis.com/drive/v3/files/' + rootFolderId + '?fields=id,name');
+        const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + rootFolderId + '?fields=id,name');
+        const meta = await res.json();
+        localStorage.setItem(LS_FOLDER_NAME, meta.name);
         await afterSetup();
         return;
       } catch (e) {
-        rootFolderId = null; localStorage.removeItem(LS_FOLDER);
+        // 別アカウントに切り替えた直後などは、保存済みIDにアクセスできないので選び直しへ
+        rootFolderId = null;
+        localStorage.removeItem(LS_FOLDER);
+        localStorage.removeItem(LS_FOLDER_NAME);
       }
     }
     show('scr-setup');
@@ -511,16 +517,22 @@ document.getElementById('btnPickFolder').onclick = () => {
       }
       rootFolderId = picked.id;
       localStorage.setItem(LS_FOLDER, rootFolderId);
+      localStorage.setItem(LS_FOLDER_NAME, picked.name);
       msg('setupMsg', '「' + picked.name + '」を保存先に設定しました。準備中...', 'ok');
       try { await afterSetup(); } catch (e) { msg('setupMsg', 'エラー: ' + e.message, 'error'); }
     })
     .build().setVisible(true);
 };
 
+function homeNoteText() {
+  const n = dolls.data.dolls.filter(d => !d.archived && d.visible !== false).length;
+  const fname = localStorage.getItem(LS_FOLDER_NAME) || '(不明)';
+  return '登録済み: ' + n + '体 / 保存先フォルダ: ' + fname;
+}
+
 async function afterSetup() {
   await initLedgers();
-  document.getElementById('homeNote').textContent =
-    '登録済み: ' + dolls.data.dolls.filter(d => !d.archived && d.visible !== false).length + '体';
+  document.getElementById('homeNote').textContent = homeNoteText();
   show('scr-home');
 }
 
@@ -530,8 +542,7 @@ document.getElementById('btnGoList').onclick = () => { renderList(); show('scr-l
 document.getElementById('btnBackFromRegister').onclick = () => { refreshHome(); };
 document.getElementById('btnBackFromList').onclick = () => { refreshHome(); };
 function refreshHome() {
-  document.getElementById('homeNote').textContent =
-    '登録済み: ' + dolls.data.dolls.filter(d => !d.archived && d.visible !== false).length + '体';
+  document.getElementById('homeNote').textContent = homeNoteText();
   show('scr-home');
 }
 
