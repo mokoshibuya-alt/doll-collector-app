@@ -347,7 +347,8 @@ function ensureToken(interactive) {
       tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
       resolve(accessToken);
     };
-    tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+    // interactive時は必ずアカウント選択画面を出す(意図しないアカウントでの自動ログイン防止)
+    tokenClient.requestAccessToken({ prompt: interactive ? 'select_account' : '' });
   });
 }
 
@@ -470,11 +471,17 @@ async function initLedgers() {
 }
 
 // ================= 起動フロー =================
+let currentUserEmail = '';
+
 document.getElementById('btnLogin').onclick = async () => {
   try {
-    msg('loginMsg', 'ログイン中...');
-    await ensureToken(false);
+    msg('loginMsg', 'ログイン中...(アカウント選択画面が開きます)');
+    await ensureToken(true);
     gapi.load('picker', () => { pickerReady = true; });
+    try {
+      const about = await (await driveFetch('https://www.googleapis.com/drive/v3/about?fields=user')).json();
+      currentUserEmail = (about.user && about.user.emailAddress) || '';
+    } catch (e) { currentUserEmail = ''; }
     // 保存済みフォルダIDが有効か確認
     if (rootFolderId) {
       try {
@@ -527,7 +534,9 @@ document.getElementById('btnPickFolder').onclick = () => {
 function homeNoteText() {
   const n = dolls.data.dolls.filter(d => !d.archived && d.visible !== false).length;
   const fname = localStorage.getItem(LS_FOLDER_NAME) || '(不明)';
-  return '登録済み: ' + n + '体 / 保存先フォルダ: ' + fname;
+  let text = '登録済み: ' + n + '体 / 保存先フォルダ: ' + fname;
+  if (currentUserEmail) text += '\nログイン中: ' + currentUserEmail;
+  return text;
 }
 
 async function afterSetup() {
