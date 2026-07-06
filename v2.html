@@ -333,9 +333,17 @@ function msg(id, text, cls) {
 }
 
 // ================= 認証 =================
+// single-flight: トークン取得中のPromiseを1つだけ保持し、並行呼び出しはそれに相乗りする。
+// (並行呼び出しごとに tokenClient.callback を上書きすると、先発のPromiseが
+//  永遠に解決しなくなるため)
+let tokenPromise = null;
+
 function ensureToken(interactive) {
-  return new Promise((resolve, reject) => {
-    if (accessToken && Date.now() < tokenExpiresAt - 60000) { resolve(accessToken); return; }
+  if (accessToken && Date.now() < tokenExpiresAt - 60000) {
+    return Promise.resolve(accessToken);
+  }
+  if (tokenPromise) return tokenPromise;
+  const p = new Promise((resolve, reject) => {
     if (!tokenClient) {
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID, scope: SCOPE, callback: () => {}
@@ -350,6 +358,9 @@ function ensureToken(interactive) {
     // interactive時は必ずアカウント選択画面を出す(意図しないアカウントでの自動ログイン防止)
     tokenClient.requestAccessToken({ prompt: interactive ? 'select_account' : '' });
   });
+  tokenPromise = p;
+  p.then(() => { tokenPromise = null; }, () => { tokenPromise = null; });
+  return p;
 }
 
 async function driveFetch(url, options) {
