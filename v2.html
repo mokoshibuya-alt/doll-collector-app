@@ -442,7 +442,14 @@ async function updateFileContent(fileId, content, mimeType) {
 
 async function readJson(fileId) {
   const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media');
-  return await res.json();
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const err = new Error('JSONの解析に失敗しました');
+    err.isCorrupt = true;
+    throw err;
+  }
 }
 
 // ================= 台帳 =================
@@ -456,7 +463,18 @@ const LEDGER_ARRAY_KEYS = {
 async function ensureLedger(name, defaultData) {
   const found = await findChild(dbFolderId, name, false);
   if (found) {
-    return { fileId: found.id, name, data: await readJson(found.id) };
+    // 台帳が既に存在する場合、壊れていても絶対に初期データで作り直さない
+    try {
+      return { fileId: found.id, name, data: await readJson(found.id) };
+    } catch (e) {
+      if (e.isCorrupt) {
+        throw new Error('台帳ファイル「' + name + '」が壊れている可能性があります。' +
+          'Googleドライブで hasune/_db/' + name + ' を右クリック→「版を管理」から' +
+          '以前の版に復元してから、もう一度開いてください。' +
+          '(このアプリからは上書きしません)');
+      }
+      throw e;
+    }
   }
   const fileId = await uploadFile(dbFolderId, name,
     new Blob([JSON.stringify(defaultData, null, 2)], { type: 'application/json' }), 'application/json');
@@ -571,20 +589,25 @@ document.getElementById('btnLogin').onclick = async () => {
       const about = await (await driveFetch('https://www.googleapis.com/drive/v3/about?fields=user')).json();
       currentUserEmail = (about.user && about.user.emailAddress) || '';
     } catch (e) { currentUserEmail = ''; }
-    // 保存済みフォルダIDが有効か確認
+    // 保存済みフォルダIDが有効か確認(フォルダの検証と台帳読み込みは分けて扱う:
+    // 台帳側のエラーで保存先設定を消してしまわないため)
+    let folderOk = false;
     if (rootFolderId) {
       try {
         const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + rootFolderId + '?fields=id,name');
         const meta = await res.json();
         localStorage.setItem(LS_FOLDER_NAME, meta.name);
-        await afterSetup();
-        return;
+        folderOk = true;
       } catch (e) {
         // 別アカウントに切り替えた直後などは、保存済みIDにアクセスできないので選び直しへ
         rootFolderId = null;
         localStorage.removeItem(LS_FOLDER);
         localStorage.removeItem(LS_FOLDER_NAME);
       }
+    }
+    if (folderOk) {
+      await afterSetup(); // 台帳破損などのエラーは外側のcatchでメッセージ表示される
+      return;
     }
     show('scr-setup');
   } catch (e) {
