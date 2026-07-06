@@ -461,13 +461,52 @@ async function saveLedger(ledger) {
   await updateFileContent(ledger.fileId, JSON.stringify(ledger.data, null, 2), 'application/json');
 }
 
+function newId() {
+  return (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+}
+
+// schemaVersion 1 → 2 移行: 旧形式のID(スラッグ+タイムスタンプ)をUUIDに振り直し、
+// レコード間の参照(dolls.categoryId, logs.dollId)も追随させる。一度だけ実行される。
+function migrateLedgersToV2() {
+  const needs = [settings, dolls, logs].some(l => (l.data.schemaVersion || 1) < 2);
+  if (!needs) return false;
+  const now = new Date().toISOString();
+  const catMap = {}, dollMap = {};
+  for (const c of settings.data.categories || []) {
+    const nid = newId(); catMap[c.id] = nid; c.id = nid;
+    if (!c.createdAt) c.createdAt = now;
+    if (!c.updatedAt) c.updatedAt = now;
+  }
+  for (const d of dolls.data.dolls || []) {
+    const nid = newId(); dollMap[d.id] = nid; d.id = nid;
+    if (catMap[d.categoryId] !== undefined) d.categoryId = catMap[d.categoryId];
+    if (!d.updatedAt) d.updatedAt = d.createdAt || now;
+  }
+  for (const l of logs.data.logs || []) {
+    l.id = newId();
+    if (dollMap[l.dollId] !== undefined) l.dollId = dollMap[l.dollId];
+    if (!l.updatedAt) l.updatedAt = l.createdAt || now;
+  }
+  settings.data.schemaVersion = 2;
+  dolls.data.schemaVersion = 2;
+  logs.data.schemaVersion = 2;
+  return true;
+}
+
 async function initLedgers() {
   dbFolderId = await ensureFolder(rootFolderId, '_db');
   settings = await ensureLedger('settings.json', {
-    schemaVersion: 1, categories: [], attributeDefinitions: []
+    schemaVersion: 2, categories: [], attributeDefinitions: []
   });
-  dolls = await ensureLedger('dolls.json', { schemaVersion: 1, dolls: [] });
-  logs = await ensureLedger('logs.json', { schemaVersion: 1, logs: [] });
+  dolls = await ensureLedger('dolls.json', { schemaVersion: 2, dolls: [] });
+  logs = await ensureLedger('logs.json', { schemaVersion: 2, logs: [] });
+  if (migrateLedgersToV2()) {
+    await saveLedger(settings);
+    await saveLedger(dolls);
+    await saveLedger(logs);
+  }
 }
 
 // ================= 起動フロー =================
@@ -637,10 +676,6 @@ async function createCaptionedImage(file, charName, catchCopy) {
   return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
 }
 
-function slugify(name) {
-  return /^[a-zA-Z0-9\-_]+$/.test(name) ? name.toLowerCase() : 'cat-' + Date.now();
-}
-
 document.getElementById('btnSaveDoll').onclick = async () => {
   const btn = document.getElementById('btnSaveDoll');
   const file = regPhoto.files[0];
@@ -659,7 +694,8 @@ document.getElementById('btnSaveDoll').onclick = async () => {
     if (categoryId === '__new__') {
       msg('regMsg', 'カテゴリを作成中...');
       const folderId = await ensureFolder(rootFolderId, newCatName);
-      category = { id: slugify(newCatName), name: newCatName, folderId };
+      const nowIso = new Date().toISOString();
+      category = { id: newId(), name: newCatName, folderId, createdAt: nowIso, updatedAt: nowIso };
       settings.data.categories.push(category);
       await saveLedger(settings);
     } else {
@@ -699,7 +735,7 @@ document.getElementById('btnSaveDoll').onclick = async () => {
     msg('regMsg', '台帳に登録中...');
     const now = new Date().toISOString();
     dolls.data.dolls.push({
-      id: category.id + '-' + Date.now(),
+      id: newId(),
       categoryId: category.id,
       name, catchcopy: catchCopy,
       folderId: dollFolderId,
@@ -954,7 +990,7 @@ document.getElementById('btnSaveLog').onclick = async () => {
 
     const now = new Date().toISOString();
     logs.data.logs.push({
-      id: 'log-' + Date.now(),
+      id: newId(),
       dollId, memo, media, textFileId,
       createdAt: now, updatedAt: now,
       archived: false, archivedAt: null, archivedReason: null, visible: true,
@@ -1337,7 +1373,7 @@ document.getElementById('btnRunMigrate').onclick = async () => {
       }
       const now = new Date().toISOString();
       logs.data.logs.push({
-        id: 'log-' + Date.now(),
+        id: newId(),
         dollId: d.id,
         memo: memo || '(旧形式から取り込み)',
         media,
