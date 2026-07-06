@@ -446,19 +446,68 @@ async function readJson(fileId) {
 }
 
 // ================= 台帳 =================
+// 台帳ごとの「レコード配列」のキー。マージはこの配列に対してid単位で行う
+const LEDGER_ARRAY_KEYS = {
+  'dolls.json': ['dolls'],
+  'logs.json': ['logs'],
+  'settings.json': ['categories', 'attributeDefinitions']
+};
+
 async function ensureLedger(name, defaultData) {
   const found = await findChild(dbFolderId, name, false);
   if (found) {
-    return { fileId: found.id, data: await readJson(found.id) };
+    return { fileId: found.id, name, data: await readJson(found.id) };
   }
   const fileId = await uploadFile(dbFolderId, name,
     new Blob([JSON.stringify(defaultData, null, 2)], { type: 'application/json' }), 'application/json');
-  return { fileId, data: defaultData };
+  return { fileId, name, data: defaultData };
 }
 
-async function saveLedger(ledger) {
+// レコードの同一性: id(なければkey。attributeDefinitions用)
+function recordIdentity(r) {
+  if (!r) return undefined;
+  return r.id !== undefined ? r.id : r.key;
+}
+
+// id単位のマージ: 片方にしかないレコードは残し、両方にあれば updatedAt が新しい方を採用
+function mergeRecords(localArr, remoteArr) {
+  const merged = new Map();
+  for (const r of remoteArr || []) {
+    const key = recordIdentity(r);
+    if (key !== undefined) merged.set(key, r);
+  }
+  for (const r of localArr || []) {
+    const key = recordIdentity(r);
+    if (key === undefined) continue;
+    const other = merged.get(key);
+    if (!other) { merged.set(key, r); continue; }
+    const lu = r.updatedAt || '';
+    const ru = other.updatedAt || '';
+    if (lu >= ru) merged.set(key, r); // 同時刻・両方欠落はローカル優先
+  }
+  return Array.from(merged.values());
+}
+
+// 実際の書き込み(マージなし)。移行処理など「読んだ直後に書く」場面専用
+async function writeLedger(ledger) {
   ledger.data.updatedAt = new Date().toISOString();
   await updateFileContent(ledger.fileId, JSON.stringify(ledger.data, null, 2), 'application/json');
+}
+
+// 保存 = Drive上の最新を読み直し→レコード単位でマージ→書き込み。
+// 2人同時利用や開きっぱなしのタブで、相手の更新を上書き消去しないため
+async function saveLedger(ledger) {
+  try {
+    const remote = await readJson(ledger.fileId);
+    for (const key of (LEDGER_ARRAY_KEYS[ledger.name] || [])) {
+      if (Array.isArray(ledger.data[key]) || Array.isArray(remote[key])) {
+        ledger.data[key] = mergeRecords(ledger.data[key] || [], remote[key] || []);
+      }
+    }
+  } catch (e) {
+    // 読み直し失敗(通信断・破損など)時はローカル優先で書き込みを続行
+  }
+  await writeLedger(ledger);
 }
 
 function newId() {
@@ -503,9 +552,10 @@ async function initLedgers() {
   dolls = await ensureLedger('dolls.json', { schemaVersion: 2, dolls: [] });
   logs = await ensureLedger('logs.json', { schemaVersion: 2, logs: [] });
   if (migrateLedgersToV2()) {
-    await saveLedger(settings);
-    await saveLedger(dolls);
-    await saveLedger(logs);
+    // 移行直後は読んだばかりの内容を書くだけなのでマージ不要(旧IDが復活してしまうため)
+    await writeLedger(settings);
+    await writeLedger(dolls);
+    await writeLedger(logs);
   }
 }
 
@@ -1226,6 +1276,7 @@ async function renameCategory(catId) {
     msg('manageMsg', '変更中...');
     if (c.folderId) await renameDriveFile(c.folderId, newName.trim());
     c.name = newName.trim();
+    c.updatedAt = new Date().toISOString();
     await saveLedger(settings);
     renderManageCats();
     msg('manageMsg', '変更しました(ドライブのフォルダ名も変更済み)', 'ok');
