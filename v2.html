@@ -363,6 +363,15 @@ function ensureToken(interactive) {
   return p;
 }
 
+// 保存系操作の冒頭で呼ぶ: トークンの残りが10分未満なら、ユーザー操作の直後の
+// タイミングで先に更新しておく(Safariのポップアップブロック対策)
+async function refreshTokenIfExpiringSoon() {
+  if (!accessToken || Date.now() > tokenExpiresAt - 10 * 60 * 1000) {
+    accessToken = null;
+    await ensureToken(false);
+  }
+}
+
 async function driveFetch(url, options) {
   await ensureToken(false);
   const doFetch = () => fetch(url, {
@@ -794,8 +803,18 @@ document.getElementById('btnSaveDoll').onclick = async () => {
   const newCatName = regNewCategory.value.trim();
   if (categoryId === '__new__' && !newCatName) { msg('regMsg', '新しいカテゴリ名を入力してください', 'error'); return; }
 
+  // 同一カテゴリ内に同名の人形がいるとフォルダが共有されてしまうため中断
+  if (categoryId !== '__new__') {
+    const dup = dolls.data.dolls.find(d => d.categoryId === categoryId && !d.archived && d.name === name);
+    if (dup) {
+      msg('regMsg', '同じ名前の人形「' + name + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
+      return;
+    }
+  }
+
   btn.disabled = true;
   try {
+    await refreshTokenIfExpiringSoon();
     // カテゴリ(必要なら新規作成: Driveフォルダ + settings.json)
     let category;
     if (categoryId === '__new__') {
@@ -1074,6 +1093,7 @@ document.getElementById('btnSaveLog').onclick = async () => {
 
   btn.disabled = true;
   try {
+    await refreshTokenIfExpiringSoon();
     msg('logMsg', 'フォルダを準備中...');
     const logsFolderId = await ensureFolder(d.folderId, 'logs');
     const ts = timestamp();
@@ -1178,6 +1198,7 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
 
   btn.disabled = true;
   try {
+    await refreshTokenIfExpiringSoon();
     // キャラ名変更 → Driveのキャラフォルダ名も変更
     if (newName !== d.name && d.folderId) {
       msg('edMsg', 'フォルダ名を変更中...');
@@ -1267,6 +1288,7 @@ document.getElementById('btnSaveEditLog').onclick = async () => {
   if (!l) return;
   btn.disabled = true;
   try {
+    await refreshTokenIfExpiringSoon();
     l.memo = document.getElementById('elMemo').value.trim();
     l.attributes = collectAttrs('elAttrs');
     l.updatedAt = new Date().toISOString();
