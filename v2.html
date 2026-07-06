@@ -512,7 +512,28 @@ async function writeLedger(ledger) {
   await updateFileContent(ledger.fileId, JSON.stringify(ledger.data, null, 2), 'application/json');
 }
 
-// 保存 = Drive上の最新を読み直し→レコード単位でマージ→書き込み。
+// 日次バックアップ: その日最初の保存の前に、書き込み前の台帳を _db/backup/ にコピーする。
+// バックアップの失敗は本体の保存を妨げない
+let backupFolderId = null;
+async function backupLedgerDaily(ledger) {
+  try {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const ymd = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+    const backupName = ledger.name.replace(/\.json$/, '') + '-' + ymd + '.json';
+    if (!backupFolderId) backupFolderId = await ensureFolder(dbFolderId, 'backup');
+    if (await findChild(backupFolderId, backupName, false)) return; // 今日の分は作成済み
+    await driveFetch('https://www.googleapis.com/drive/v3/files/' + ledger.fileId + '/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: backupName, parents: [backupFolderId] })
+    });
+  } catch (e) {
+    // バックアップ失敗は無視して本体の保存を続行
+  }
+}
+
+// 保存 = Drive上の最新を読み直し→レコード単位でマージ→(日次バックアップ)→書き込み。
 // 2人同時利用や開きっぱなしのタブで、相手の更新を上書き消去しないため
 async function saveLedger(ledger) {
   try {
@@ -525,6 +546,7 @@ async function saveLedger(ledger) {
   } catch (e) {
     // 読み直し失敗(通信断・破損など)時はローカル優先で書き込みを続行
   }
+  await backupLedgerDaily(ledger);
   await writeLedger(ledger);
 }
 
@@ -564,6 +586,7 @@ function migrateLedgersToV2() {
 
 async function initLedgers() {
   dbFolderId = await ensureFolder(rootFolderId, '_db');
+  backupFolderId = null; // 保存先が変わった場合に備えてキャッシュを破棄
   settings = await ensureLedger('settings.json', {
     schemaVersion: 2, categories: [], attributeDefinitions: []
   });
