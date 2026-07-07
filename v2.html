@@ -553,6 +553,24 @@ async function backupLedgerDaily(ledger) {
   }
 }
 
+// 楽観的ロック: 編集画面を開いた時点のupdatedAtと、Drive上の現在のupdatedAtを比較し、
+// 別の端末で更新されていた場合は上書き確認を出す。
+// 読み直しが失敗したときは警告なしで保存を続行する(項目2と同じ可用性優先の方針)
+async function confirmOverwriteIfChanged(ledger, arrayKey, recordId, baseUpdatedAt, label) {
+  let remoteRec = null;
+  try {
+    const remote = await readJson(ledger.fileId);
+    remoteRec = (remote[arrayKey] || []).find(r => r && r.id === recordId) || null;
+  } catch (e) {
+    return true; // 確認できないときは従来どおり保存を続行
+  }
+  const remoteUpdatedAt = remoteRec ? (remoteRec.updatedAt || null) : null;
+  if (remoteRec && remoteUpdatedAt !== baseUpdatedAt) {
+    return confirm('この' + label + 'は、編集を開いた後に別の端末で更新されています。\n上書きして保存しますか?');
+  }
+  return true;
+}
+
 // 保存 = Drive上の最新を読み直し→レコード単位でマージ→(日次バックアップ)→書き込み。
 // 2人同時利用や開きっぱなしのタブで、相手の更新を上書き消去しないため
 async function saveLedger(ledger) {
@@ -1165,9 +1183,12 @@ document.getElementById('btnAddEdAttr').onclick = () => addAttrRow('edAttrs');
 document.getElementById('btnBackFromEditDoll').onclick = () => openDetail(currentDollId);
 document.getElementById('btnEditDoll').onclick = () => openEditDoll(currentDollId);
 
+let editDollBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
+
 function openEditDoll(dollId) {
   const d = dolls.data.dolls.find(x => x.id === dollId);
   if (!d) return;
+  editDollBaseUpdatedAt = d.updatedAt || null;
   edPhoto.value = '';
   edPreview.style.display = 'none';
   const sel = document.getElementById('edCategory');
@@ -1199,6 +1220,12 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
   btn.disabled = true;
   try {
     await refreshTokenIfExpiringSoon();
+    // 楽観的ロック: 別の端末で更新されていたら上書き確認(Drive操作より前に行う)
+    const okToSave = await confirmOverwriteIfChanged(dolls, 'dolls', currentDollId, editDollBaseUpdatedAt, '人形');
+    if (!okToSave) {
+      msg('edMsg', '保存を中止しました。編集内容は画面に残っています。');
+      return;
+    }
     // キャラ名変更 → Driveのキャラフォルダ名も変更
     if (newName !== d.name && d.folderId) {
       msg('edMsg', 'フォルダ名を変更中...');
@@ -1270,10 +1297,13 @@ let currentLogId = null;
 document.getElementById('btnAddElAttr').onclick = () => addAttrRow('elAttrs');
 document.getElementById('btnBackFromEditLog').onclick = () => openDetail(currentDollId);
 
+let editLogBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
+
 function openEditLog(logId) {
   currentLogId = logId;
   const l = logs.data.logs.find(x => x.id === logId);
   if (!l) return;
+  editLogBaseUpdatedAt = l.updatedAt || null;
   document.getElementById('elMemo').value = l.memo || '';
   const attrsEl = document.getElementById('elAttrs');
   attrsEl.innerHTML = '';
@@ -1289,6 +1319,12 @@ document.getElementById('btnSaveEditLog').onclick = async () => {
   btn.disabled = true;
   try {
     await refreshTokenIfExpiringSoon();
+    // 楽観的ロック: 別の端末で更新されていたら上書き確認(レコードを書き換える前に行う)
+    const okToSave = await confirmOverwriteIfChanged(logs, 'logs', currentLogId, editLogBaseUpdatedAt, '活動ログ');
+    if (!okToSave) {
+      msg('elMsg', '保存を中止しました。編集内容は画面に残っています。');
+      return;
+    }
     l.memo = document.getElementById('elMemo').value.trim();
     l.attributes = collectAttrs('elAttrs');
     l.updatedAt = new Date().toISOString();
