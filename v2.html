@@ -1217,6 +1217,17 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
   const newCatId = document.getElementById('edCategory').value;
   if (!newName) { msg('edMsg', 'キャラ名を入力してください', 'error'); return; }
 
+  // 名前またはカテゴリを変更する場合、変更後のカテゴリ内の同名チェック
+  // (Driveのフォルダ名変更・移動を実行する前に必ず行う)
+  if (newName !== d.name || newCatId !== d.categoryId) {
+    const dup = dolls.data.dolls.find(x =>
+      x.categoryId === newCatId && !x.archived && x.id !== d.id && x.name === newName);
+    if (dup) {
+      msg('edMsg', '同じ名前の人形「' + newName + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
+      return;
+    }
+  }
+
   btn.disabled = true;
   try {
     await refreshTokenIfExpiringSoon();
