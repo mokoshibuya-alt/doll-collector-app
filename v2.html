@@ -118,6 +118,7 @@
     <p>Googleアカウントでログインして始めます。</p>
     <button id="btnLogin">Googleでログイン</button>
     <div class="msg" id="loginMsg"></div>
+    <p class="note" id="loginVer"></p>
   </div>
 </div>
 
@@ -316,6 +317,8 @@
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <script>
 // ================= 設定 =================
+// リリースごとに必ず更新すること(画面表示でブラウザが実行中の版を照合するため)
+const APP_VERSION = '20260709-1';
 const CLIENT_ID = '919551401625-di6e36s8s42t93lknnpj3ma3g16meg9t.apps.googleusercontent.com';
 const API_KEY = 'AIzaSyCiV3u6SwdOLS8S-GmMAWRua2BxcgNzLJQ';
 const APP_ID = '919551401625';
@@ -815,8 +818,11 @@ function homeNoteText() {
   const fname = localStorage.getItem(LS_FOLDER_NAME) || '(不明)';
   let text = '登録済み: ' + n + '体 / 保存先フォルダ: ' + fname;
   if (currentUserEmail) text += '\nログイン中: ' + currentUserEmail;
+  text += '\n版: ' + APP_VERSION;
   return text;
 }
+
+document.getElementById('loginVer').textContent = '版: ' + APP_VERSION;
 
 async function afterSetup() {
   await initLedgers();
