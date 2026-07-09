@@ -823,7 +823,7 @@ document.getElementById('btnSaveDoll').onclick = async () => {
 
   // 同一カテゴリ内に同名の人形がいるとフォルダが共有されてしまうため中断
   if (categoryId !== '__new__') {
-    const dup = dolls.data.dolls.find(d => d.categoryId === categoryId && !d.archived && d.name === name);
+    const dup = findDuplicateDollName(categoryId, name, null);
     if (dup) {
       msg('regMsg', '同じ名前の人形「' + name + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
       return;
@@ -1183,6 +1183,13 @@ document.getElementById('btnAddEdAttr').onclick = () => addAttrRow('edAttrs');
 document.getElementById('btnBackFromEditDoll').onclick = () => openDetail(currentDollId);
 document.getElementById('btnEditDoll').onclick = () => openEditDoll(currentDollId);
 
+// 同名人形チェック(項目8と同一基準): 同一カテゴリ内・trim済み完全一致・
+// 非アーカイブ・自分以外(excludeIdがnullなら全件が対象=新規登録用)
+function findDuplicateDollName(categoryId, name, excludeId) {
+  return dolls.data.dolls.find(x =>
+    x.categoryId === categoryId && !x.archived && x.id !== excludeId && x.name === name);
+}
+
 let editDollBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
 
 function openEditDoll(dollId) {
@@ -1220,8 +1227,7 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
   // 名前またはカテゴリを変更する場合、変更後のカテゴリ内の同名チェック
   // (Driveのフォルダ名変更・移動を実行する前に必ず行う)
   if (newName !== d.name || newCatId !== d.categoryId) {
-    const dup = dolls.data.dolls.find(x =>
-      x.categoryId === newCatId && !x.archived && x.id !== d.id && x.name === newName);
+    const dup = findDuplicateDollName(newCatId, newName, d.id);
     if (dup) {
       msg('edMsg', '同じ名前の人形「' + newName + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
       return;
@@ -1577,6 +1583,11 @@ async function renameDoll(dollId) {
   if (!d) return;
   const newName = prompt('新しいキャラ名', d.name);
   if (!newName || newName.trim() === '' || newName.trim() === d.name) return;
+  // 同名チェック(項目8と同一基準)。Drive操作・レコード書き換えの前に行う
+  if (findDuplicateDollName(d.categoryId, newName.trim(), d.id)) {
+    msg('manageCharsMsg', '同じ名前の人形「' + newName.trim() + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
+    return;
+  }
   try {
     msg('manageCharsMsg', '変更中...');
     if (d.folderId) await renameDriveFile(d.folderId, newName.trim());
