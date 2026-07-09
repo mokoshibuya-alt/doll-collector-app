@@ -1404,6 +1404,11 @@ async function renameCategory(catId) {
   if (!c) return;
   const newName = prompt('新しいカテゴリ名', c.name);
   if (!newName || newName.trim() === '' || newName.trim() === c.name) return;
+  // 既存の他カテゴリとの重複チェック(trim済み完全一致)。Drive操作の前に行う
+  if (settings.data.categories.some(x => x.id !== c.id && x.name === newName.trim())) {
+    msg('manageMsg', '同じ名前のカテゴリ「' + newName.trim() + '」が既にあります。別の名前にしてください。', 'error');
+    return;
+  }
   try {
     msg('manageMsg', '変更中...');
     if (c.folderId) await renameDriveFile(c.folderId, newName.trim());
