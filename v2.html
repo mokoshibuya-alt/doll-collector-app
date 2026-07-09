@@ -696,13 +696,16 @@ async function initLedgers() {
 
   const files = await listDbFiles();
 
+  // 警告文に使う保存先フォルダ名(固定名にしない。選び直しで別名の可能性があるため)
+  const folderLabel = localStorage.getItem(LS_FOLDER_NAME) || '保存先フォルダ';
+
   // (c) 同名重複検知: 3台帳すべて対象。自動でどちらかを読むことはしない
   const dupNames = LEDGER_NAMES.filter(n => files.filter(f => f.name === n).length >= 2);
   if (dupNames.length > 0) {
     showLedgerProblem(
       '⚠️ _dbフォルダの中に ' + dupNames.map(n => '「' + n + '」').join('・') +
       ' が2つ以上見つかりました。\n\nどちらが正しいデータか自動では判定できないため、' +
-      '安全のため停止しました。\nGoogleドライブで hasune/_db を開き、中身を確認して' +
+      '安全のため停止しました。\nGoogleドライブで ' + folderLabel + '/_db を開き、中身を確認して' +
       '正しい方だけを残してください(不要な方は名前を変えるかゴミ箱へ)。\n' +
       'その後、このアプリを開き直してください。', false);
     throw ledgerProblemError();
@@ -722,8 +725,11 @@ async function initLedgers() {
       'Googleドライブのゴミ箱に該当ファイルがないか確認し、あれば右クリック→「復元」' +
       'してから、このアプリを開き直してください。\n' +
       '(ゴミ箱の保管期限は30日です。期限を過ぎると復元できません)\n\n' +
-      'また、hasune/_db/backup フォルダに日次コピー(例: dolls-日付.json)が残っている' +
-      '場合は、そこからの復元もできます。', true);
+      'ゴミ箱に見つからない場合(自分以外のアカウントで削除された場合など)は、' +
+      'Googleドライブ上部の検索欄でファイル名(例: ' + missing[0] + ')を検索してください。' +
+      '見つかったら右クリック→「整理」→「移動」で ' + folderLabel + '/_db に戻せます。\n\n' +
+      'また、' + folderLabel + '/_db/backup フォルダに日次コピー(例: dolls-日付.json)が' +
+      '残っている場合は、そこからの復元もできます。', true);
     throw ledgerProblemError();
   }
 
