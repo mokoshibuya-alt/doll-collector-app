@@ -3,69 +3,913 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>人形 素材保存</title>
+<title>人形コレクション</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px; background:#fafafa; color:#222; }
-  h1 { font-size: 1.3rem; }
-  label { display:block; margin-top: 18px; font-weight: bold; font-size: 0.95rem; }
-  input[type=text], select { width: 100%; padding: 12px; font-size: 1rem; box-sizing: border-box; margin-top:6px; border:1px solid #ccc; border-radius:8px; background:#fff; }
-  input[type=file] { margin-top: 8px; }
-  img#preview { max-width: 100%; margin-top: 12px; border-radius: 10px; display:none; }
-  button { margin-top: 24px; width: 100%; padding: 15px; font-size: 1.1rem; background:#1a73e8; color:#fff; border:none; border-radius:10px; }
-  button:active { background:#1558b0; }
-  #status { margin-top: 14px; color: #555; font-size: 0.9rem; white-space: pre-wrap; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+    max-width: 480px; margin: 0 auto; padding: 16px;
+    background: #f5f0eb; color: #333;
+  }
+  h1 { font-size: 1.25rem; margin: 8px 0 16px; }
+  h2 { font-size: 1.05rem; margin: 4px 0 12px; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .card {
+    background: #fff; border-radius: 12px; padding: 16px;
+    margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  label { display: block; margin-top: 14px; font-weight: bold; font-size: 0.9rem; }
+  input[type=text], select {
+    width: 100%; padding: 12px; font-size: 1rem; margin-top: 6px;
+    border: 1px solid #ccc; border-radius: 8px; background: #fff;
+  }
+  input[type=file] { margin-top: 8px; width: 100%; }
+  img#regPreview { max-width: 100%; margin-top: 12px; border-radius: 10px; display: none; }
+  button {
+    width: 100%; padding: 14px; font-size: 1.05rem; margin-top: 16px;
+    background: #8b6f5c; color: #fff; border: none; border-radius: 10px; cursor: pointer;
+  }
+  button:disabled { background: #ccc; }
+  button.secondary { background: #fff; color: #8b6f5c; border: 2px solid #8b6f5c; }
+  button.menu {
+    text-align: left; font-size: 1rem; padding: 16px;
+    background: #fff; color: #333; border: 1px solid #e0d8d0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .back { background: none; border: none; color: #8b6f5c; font-size: 0.95rem;
+          width: auto; padding: 4px 0; margin: 0 0 8px; text-align: left; }
+  #status, .msg { margin-top: 12px; color: #555; font-size: 0.9rem; white-space: pre-wrap; }
+  .msg.error { color: #c62828; }
+  .msg.ok { color: #2e7d32; }
+  .doll-item {
+    display: flex; gap: 12px; align-items: center;
+    background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .doll-item img {
+    width: 72px; height: 72px; object-fit: cover; border-radius: 10px; background: #eee;
+    flex-shrink: 0;
+  }
+  .doll-item .info { min-width: 0; }
+  .doll-item .name { font-weight: bold; }
+  .doll-item .catch { font-size: 0.85rem; color: #777; margin-top: 2px; }
+  .doll-item .cat { font-size: 0.75rem; color: #a08b7a; margin-top: 4px; }
+  .note { font-size: 0.8rem; color: #999; margin-top: 8px; }
+  .doll-item { cursor: pointer; }
+  textarea {
+    width: 100%; padding: 12px; font-size: 1rem; margin-top: 6px;
+    border: 1px solid #ccc; border-radius: 8px; background: #fff; min-height: 70px;
+    font-family: inherit;
+  }
+  .attr-row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .attr-row input { margin-top: 0; }
+  .attr-row .del {
+    width: 40px; padding: 10px 0; margin: 0; flex-shrink: 0;
+    background: #eee; color: #666; border-radius: 8px; font-size: 1rem;
+  }
+  .profile-head { display: flex; gap: 14px; align-items: center; }
+  .profile-head img {
+    width: 96px; height: 96px; object-fit: cover; border-radius: 12px; background: #eee;
+    flex-shrink: 0;
+  }
+  .profile-head .name { font-weight: bold; font-size: 1.1rem; }
+  .profile-head .catch { font-size: 0.9rem; color: #777; margin-top: 4px; }
+  .profile-head .cat { font-size: 0.8rem; color: #a08b7a; margin-top: 6px; }
+  .log-card {
+    background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .log-card .date { font-size: 0.75rem; color: #999; }
+  .log-card .memo { margin-top: 6px; font-size: 0.95rem; white-space: pre-wrap; }
+  .log-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .log-thumbs img, .log-thumbs .video-chip {
+    width: 84px; height: 84px; object-fit: cover; border-radius: 8px; background: #eee;
+  }
+  .log-thumbs .video-chip {
+    display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+  }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chip {
+    font-size: 0.75rem; background: #f0e8e0; color: #7a6455;
+    border-radius: 999px; padding: 4px 10px;
+  }
+  .mini {
+    width: auto; padding: 6px 12px; font-size: 0.8rem; margin: 0;
+    background: #f0e8e0; color: #7a6455; border-radius: 8px;
+  }
+  .log-head { display: flex; justify-content: space-between; align-items: center; }
+  .danger { background: #b3574a; }
+  .manage-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .manage-item .label { cursor: pointer; flex: 1; min-width: 0; }
+  .manage-item .sub { font-size: 0.75rem; color: #999; margin-top: 2px; }
 </style>
 </head>
 <body>
-<h1>人形 素材保存</h1>
 
-<label for="photo">写真</label>
-<input type="file" id="photo" accept="image/*">
-<img id="preview" alt="preview">
+<!-- ログイン画面 -->
+<div class="screen active" id="scr-login">
+  <h1>人形コレクション</h1>
+  <div class="card">
+    <p>Googleアカウントでログインして始めます。</p>
+    <button id="btnLogin">Googleでログイン</button>
+    <div class="msg" id="loginMsg"></div>
+    <p class="note" id="loginVer"></p>
+  </div>
+</div>
 
-<label for="category">カテゴリ</label>
-<select id="category">
-  <option value="jirori">jirori</option>
-  <option value="kao-charm">kao-charm</option>
-  <option value="__new__">＋ 新規カテゴリを入力</option>
-</select>
-<input type="text" id="newCategory" placeholder="新しいカテゴリ名(ローマ字推奨)" style="display:none; margin-top:8px;">
+<!-- 初回セットアップ画面 -->
+<div class="screen" id="scr-setup">
+  <h1>初回セットアップ</h1>
+  <div class="card">
+    <p>データの保存先になる <b>hasune</b> フォルダを選んでください。(この端末で1回だけの操作です)</p>
+    <button id="btnPickFolder">hasune フォルダを選ぶ</button>
+    <div class="msg" id="setupMsg"></div>
+  </div>
+</div>
 
-<label for="charname">キャラ名(マイクボタンで話してOK)</label>
-<input type="text" id="charname" placeholder="例: ゆって">
+<!-- 台帳の問題検知画面(消失・同名重複) -->
+<div class="screen" id="scr-ledgerwarn">
+  <h1>人形コレクション</h1>
+  <div class="card">
+    <div class="msg error" id="ledgerWarnMsg" style="margin-top:0;"></div>
+    <button class="back" id="btnForceCreateLedgers"
+      style="display:none; margin-top:20px; text-decoration:underline;">復元できなかった場合はこちら(新しい台帳を作る)</button>
+  </div>
+</div>
 
-<label for="catch">キャッチコピー(マイクボタンで話してOK)</label>
-<input type="text" id="catch" placeholder="例: 仕事休みたい言い訳がほしい人形">
+<!-- ホーム画面 -->
+<div class="screen" id="scr-home">
+  <h1>人形コレクション</h1>
+  <button class="menu" id="btnGoRegister">📷 人形を登録する</button>
+  <button class="menu" id="btnGoList">📚 保存済み一覧を見る</button>
+  <button class="menu" id="btnGoLog">📝 活動ログを保存する</button>
+  <button class="menu" id="btnGoManage">⚙️ カテゴリ・キャラ管理</button>
+  <p class="note" id="homeNote"></p>
+  <button class="secondary" id="btnRefresh" style="margin-top:12px;">🔄 最新に更新</button>
+  <div class="msg" id="homeMsg"></div>
+  <button class="secondary" id="btnRepickFolder" style="margin-top:24px; font-size:0.85rem; padding:10px;">保存先フォルダを選び直す(いま間違ったフォルダに保存されている場合)</button>
+</div>
 
-<button id="saveBtn">保存(共有)する</button>
-<div id="status"></div>
+<!-- 人形登録画面 -->
+<div class="screen" id="scr-register">
+  <button class="back" id="btnBackFromRegister">← ホームへ戻る</button>
+  <h2>📷 人形を登録する</h2>
 
+  <label for="regPhoto">写真</label>
+  <input type="file" id="regPhoto" accept="image/*">
+  <img id="regPreview" alt="preview">
+
+  <label for="regCategory">カテゴリ</label>
+  <select id="regCategory"></select>
+  <input type="text" id="regNewCategory" placeholder="新しいカテゴリ名" style="display:none; margin-top:8px;">
+
+  <label for="regName">キャラ名(マイクボタンで話してOK)</label>
+  <input type="text" id="regName" placeholder="例: ゆって">
+
+  <label for="regCatch">キャッチコピー(マイクボタンで話してOK)</label>
+  <input type="text" id="regCatch" placeholder="例: 仕事休みたい言い訳がほしい人形">
+
+  <button id="btnSaveDoll">保存する</button>
+  <div class="msg" id="regMsg"></div>
+</div>
+
+<!-- 一覧画面 -->
+<div class="screen" id="scr-list">
+  <button class="back" id="btnBackFromList">← ホームへ戻る</button>
+  <h2>📚 保存済み一覧</h2>
+  <div id="dollList"></div>
+  <div class="msg" id="listMsg"></div>
+</div>
+
+<!-- キャラクター詳細画面 -->
+<div class="screen" id="scr-detail">
+  <button class="back" id="btnBackFromDetail">← 一覧へ戻る</button>
+  <div class="card">
+    <div class="profile-head" id="detailProfile"></div>
+    <button class="secondary" id="btnEditDoll" style="margin-top:14px;">✏️ プロフィールを編集</button>
+  </div>
+  <h2>活動ログ</h2>
+  <div id="detailLogs"></div>
+  <div class="msg" id="detailMsg"></div>
+  <button id="btnAddLogFromDetail">＋ 活動ログを追加</button>
+</div>
+
+<!-- 活動ログ保存画面 -->
+<div class="screen" id="scr-log">
+  <button class="back" id="btnBackFromLog">← 戻る</button>
+  <h2>📝 活動ログを保存する</h2>
+
+  <label for="logDoll">どの子の記録?</label>
+  <select id="logDoll"></select>
+
+  <label for="logMedia">写真・動画(複数選べます)</label>
+  <input type="file" id="logMedia" accept="image/*,video/*" multiple>
+  <div id="logMediaInfo" class="note"></div>
+
+  <label for="logMemo">メモ(マイクボタンで話してOK)</label>
+  <textarea id="logMemo" placeholder="例: パン屋さんにおでかけしました"></textarea>
+
+  <label>追加情報(自由項目)</label>
+  <div id="logAttrs"></div>
+  <button class="secondary" id="btnAddAttr">＋ 項目を追加</button>
+
+  <button id="btnSaveLog">保存する</button>
+  <div class="msg" id="logMsg"></div>
+</div>
+
+<!-- プロフィール編集画面 -->
+<div class="screen" id="scr-editdoll">
+  <button class="back" id="btnBackFromEditDoll">← 戻る</button>
+  <h2>✏️ プロフィールを編集</h2>
+
+  <label for="edPhoto">代表写真を差し替える(変えない場合はそのまま)</label>
+  <input type="file" id="edPhoto" accept="image/*">
+  <img id="edPreview" alt="" style="max-width:100%; margin-top:12px; border-radius:10px; display:none;">
+
+  <label for="edCategory">カテゴリ</label>
+  <select id="edCategory"></select>
+
+  <label for="edName">キャラ名</label>
+  <input type="text" id="edName">
+
+  <label for="edCatch">キャッチコピー</label>
+  <input type="text" id="edCatch">
+
+  <label>追加情報(自由項目)</label>
+  <div id="edAttrs"></div>
+  <button class="secondary" id="btnAddEdAttr">＋ 項目を追加</button>
+
+  <button id="btnSaveEditDoll">保存する</button>
+  <button class="danger" id="btnArchiveDoll">このキャラをアーカイブする(一覧から隠す)</button>
+  <div class="msg" id="edMsg"></div>
+</div>
+
+<!-- 活動ログ編集画面 -->
+<div class="screen" id="scr-editlog">
+  <button class="back" id="btnBackFromEditLog">← 戻る</button>
+  <h2>✏️ 活動ログを編集</h2>
+
+  <label for="elMemo">メモ</label>
+  <textarea id="elMemo"></textarea>
+
+  <label>追加情報(自由項目)</label>
+  <div id="elAttrs"></div>
+  <button class="secondary" id="btnAddElAttr">＋ 項目を追加</button>
+
+  <button id="btnSaveEditLog">保存する</button>
+  <button class="danger" id="btnArchiveLog">このログをアーカイブする(一覧から隠す)</button>
+  <div class="msg" id="elMsg"></div>
+</div>
+
+<!-- カテゴリ・キャラ管理画面 -->
+<div class="screen" id="scr-manage">
+  <button class="back" id="btnBackFromManage">← ホームへ戻る</button>
+  <h2>⚙️ カテゴリ管理</h2>
+  <p class="note">名前を変えると、Googleドライブの実際のフォルダ名も一緒に変わります。行をタップすると中のキャラ一覧へ。</p>
+  <div id="manageCats"></div>
+  <div class="msg" id="manageMsg"></div>
+</div>
+
+<!-- 既存ファイル取り込み(移行)画面 -->
+<div class="screen" id="scr-migrate">
+  <button class="back" id="btnBackFromMigrate">← ホームへ戻る</button>
+  <h2>📥 既存ファイルの取り込み</h2>
+  <p class="note">共有シート時代に保存したファイルを、新しい台帳に取り込みます。
+    選んだファイルは、そのキャラの正しいフォルダ(profile/ または logs/)に自動で移動・整理されます。</p>
+
+  <button class="secondary" id="btnPickMigrateFiles">ファイルを選ぶ(複数選択できます)</button>
+  <div class="msg" id="migrateFileList"></div>
+
+  <div id="migrateOptions" style="display:none;">
+    <label for="migDoll">どのキャラのファイル?</label>
+    <select id="migDoll"></select>
+
+    <label>取り込み方法</label>
+    <div class="card" style="padding:12px;">
+      <label style="margin-top:0; font-weight:normal;">
+        <input type="radio" name="migType" value="log" checked>
+        活動ログとして取り込む(写真・動画は記録として追加、txtの中身はメモに入る)
+      </label>
+      <label style="font-weight:normal;">
+        <input type="radio" name="migType" value="profile">
+        代表写真(プロフィール)として取り込む(最初の写真1枚が代表写真になる)
+      </label>
+    </div>
+
+    <button id="btnRunMigrate">取り込む</button>
+  </div>
+  <div class="msg" id="migMsg"></div>
+</div>
+
+<div class="screen" id="scr-managechars">
+  <button class="back" id="btnBackFromManageChars">← カテゴリ一覧へ戻る</button>
+  <h2 id="manageCharsTitle">キャラクター</h2>
+  <div id="manageChars"></div>
+  <div class="msg" id="manageCharsMsg"></div>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <script>
-const photoInput = document.getElementById('photo');
-const preview = document.getElementById('preview');
-const categorySelect = document.getElementById('category');
-const newCategoryInput = document.getElementById('newCategory');
-const charInput = document.getElementById('charname');
-const catchInput = document.getElementById('catch');
-const saveBtn = document.getElementById('saveBtn');
-const statusEl = document.getElementById('status');
+// ================= 設定 =================
+// リリースごとに必ず更新すること(画面表示でブラウザが実行中の版を照合するため)
+const APP_VERSION = '20260709-1';
+const CLIENT_ID = '919551401625-di6e36s8s42t93lknnpj3ma3g16meg9t.apps.googleusercontent.com';
+const API_KEY = 'AIzaSyCiV3u6SwdOLS8S-GmMAWRua2BxcgNzLJQ';
+const APP_ID = '919551401625';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const LS_FOLDER = 'dollapp_hasuneFolderId';
+const LS_FOLDER_NAME = 'dollapp_hasuneFolderName';
 
-categorySelect.addEventListener('change', () => {
-  newCategoryInput.style.display = categorySelect.value === '__new__' ? 'block' : 'none';
+// ================= 状態 =================
+let accessToken = null;
+let tokenExpiresAt = 0;
+let tokenClient = null;
+let pickerReady = false;
+let rootFolderId = localStorage.getItem(LS_FOLDER) || null;
+let dbFolderId = null;
+// 台帳: { fileId, data }
+let settings = null, dolls = null, logs = null;
+
+// ================= 画面切り替え =================
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function msg(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg' + (cls ? ' ' + cls : '');
+}
+
+// ================= 認証 =================
+// single-flight: トークン取得中のPromiseを1つだけ保持し、並行呼び出しはそれに相乗りする。
+// (並行呼び出しごとに tokenClient.callback を上書きすると、先発のPromiseが
+//  永遠に解決しなくなるため)
+let tokenPromise = null;
+
+function ensureToken(interactive) {
+  if (accessToken && Date.now() < tokenExpiresAt - 60000) {
+    return Promise.resolve(accessToken);
+  }
+  if (tokenPromise) return tokenPromise;
+  const p = new Promise((resolve, reject) => {
+    if (!tokenClient) {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID, scope: SCOPE, callback: () => {}
+      });
+    }
+    tokenClient.callback = (resp) => {
+      if (resp.error) { reject(new Error(resp.error)); return; }
+      accessToken = resp.access_token;
+      tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+      resolve(accessToken);
+    };
+    // interactive時は必ずアカウント選択画面を出す(意図しないアカウントでの自動ログイン防止)
+    tokenClient.requestAccessToken({ prompt: interactive ? 'select_account' : '' });
+  });
+  tokenPromise = p;
+  p.then(() => { tokenPromise = null; }, () => { tokenPromise = null; });
+  return p;
+}
+
+// 保存系操作の冒頭で呼ぶ: トークンの残りが10分未満なら、ユーザー操作の直後の
+// タイミングで先に更新しておく(Safariのポップアップブロック対策)
+async function refreshTokenIfExpiringSoon() {
+  if (!accessToken || Date.now() > tokenExpiresAt - 10 * 60 * 1000) {
+    accessToken = null;
+    await ensureToken(false);
+  }
+}
+
+async function driveFetch(url, options) {
+  await ensureToken(false);
+  const doFetch = () => fetch(url, {
+    ...options,
+    headers: { 'Authorization': 'Bearer ' + accessToken, ...(options && options.headers) }
+  });
+  let res = await doFetch();
+  if (res.status === 401) { // トークン失効 → 再取得して1回だけリトライ
+    accessToken = null;
+    await ensureToken(false);
+    res = await doFetch();
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error('Drive APIエラー HTTP ' + res.status + ': ' + body.slice(0, 200));
+  }
+  return res;
+}
+
+// ================= Drive 基本操作 =================
+async function findChild(parentId, name, isFolder) {
+  let q = `'${parentId}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false`;
+  if (isFolder) q += " and mimeType='application/vnd.google-apps.folder'";
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id,name)');
+  const data = await res.json();
+  return (data.files && data.files[0]) || null;
+}
+
+async function createFolder(parentId, name) {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] })
+  });
+  return (await res.json()).id;
+}
+
+async function ensureFolder(parentId, name) {
+  const found = await findChild(parentId, name, true);
+  return found ? found.id : await createFolder(parentId, name);
+}
+
+// アップロード(新規作成)。fileBlob は Blob/File
+// 5MB近辺以上は multipart が使えない(API仕様)ため resumable 方式に切り替える
+async function uploadFile(parentId, name, fileBlob, mimeType) {
+  const meta = { name, parents: [parentId], mimeType: mimeType || fileBlob.type || 'application/octet-stream' };
+  if (fileBlob.size > 4 * 1024 * 1024) {
+    const init = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': meta.mimeType
+      },
+      body: JSON.stringify(meta)
+    });
+    const location = init.headers.get('Location');
+    const up = await driveFetch(location, {
+      method: 'PUT',
+      headers: { 'Content-Type': meta.mimeType },
+      body: fileBlob
+    });
+    return (await up.json()).id;
+  }
+  const boundary = 'b' + Date.now() + Math.random().toString(36).slice(2);
+  const body = new Blob([
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+    JSON.stringify(meta),
+    `\r\n--${boundary}\r\nContent-Type: ${meta.mimeType}\r\n\r\n`,
+    fileBlob,
+    `\r\n--${boundary}--`
+  ]);
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+    body
+  });
+  return (await res.json()).id;
+}
+
+// 既存ファイルの中身を上書き
+async function updateFileContent(fileId, content, mimeType) {
+  await driveFetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', {
+    method: 'PATCH',
+    headers: { 'Content-Type': mimeType },
+    body: content
+  });
+}
+
+async function readJson(fileId) {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media');
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const err = new Error('JSONの解析に失敗しました');
+    err.isCorrupt = true;
+    throw err;
+  }
+}
+
+// ================= 台帳 =================
+// 台帳ごとの「レコード配列」のキー。マージはこの配列に対してid単位で行う
+const LEDGER_ARRAY_KEYS = {
+  'dolls.json': ['dolls'],
+  'logs.json': ['logs'],
+  'settings.json': ['categories', 'attributeDefinitions']
+};
+
+const LEDGER_NAMES = ['settings.json', 'dolls.json', 'logs.json'];
+
+// _db直下のファイル一覧を1回で取得(台帳の特定と同名重複検知を兼ねる)
+async function listDbFiles() {
+  const q = `'${dbFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id,name)&pageSize=100');
+  const data = await res.json();
+  return data.files || [];
+}
+
+async function loadOrCreateLedger(name, files, defaultData) {
+  const entry = files.find(f => f.name === name);
+  if (entry) {
+    // 台帳が既に存在する場合、壊れていても絶対に初期データで作り直さない
+    try {
+      return { fileId: entry.id, name, data: await readJson(entry.id) };
+    } catch (e) {
+      if (e.isCorrupt) {
+        throw new Error('台帳ファイル「' + name + '」が壊れている可能性があります。' +
+          'Googleドライブで hasune/_db/' + name + ' を右クリック→「版を管理」から' +
+          '以前の版に復元してから、もう一度開いてください。' +
+          '(このアプリからは上書きしません)');
+      }
+      throw e;
+    }
+  }
+  const fileId = await uploadFile(dbFolderId, name,
+    new Blob([JSON.stringify(defaultData, null, 2)], { type: 'application/json' }), 'application/json');
+  return { fileId, name, data: defaultData };
+}
+
+// 台帳の問題(消失・同名重複)を検知したときの警告画面表示
+let pendingMissingLedgers = null;
+let forceCreateApproved = false;
+
+function showLedgerProblem(text, withCreateButton) {
+  msg('ledgerWarnMsg', text, 'error');
+  document.getElementById('btnForceCreateLedgers').style.display =
+    withCreateButton ? 'block' : 'none';
+  show('scr-ledgerwarn');
+}
+
+function ledgerProblemError() {
+  const e = new Error('台帳の問題を検知したため停止しました');
+  e.handled = true; // 警告画面で案内済み。呼び出し元でのメッセージ表示は不要
+  return e;
+}
+
+document.getElementById('btnForceCreateLedgers').onclick = async () => {
+  const missing = pendingMissingLedgers || [];
+  if (missing.length === 0) return;
+  let text = '本当に空の台帳を新しく作りますか?\n\n' +
+    '作成するのは見つからない ' + missing.join(' / ') + ' だけです。' +
+    '無事なファイルには一切触れません。\n' +
+    '過去に登録したデータの一部が表示されなくなる可能性があります' +
+    '(写真などのファイル自体は消えません)。';
+  if (missing.includes('settings.json') && !missing.includes('dolls.json')) {
+    text += '\n\n※カテゴリ情報(settings.json)を作り直すため、既存の人形のカテゴリが' +
+      '一時的にID表示になります。編集画面からカテゴリを選び直すと直ります。';
+  }
+  if (!confirm(text)) return;
+  forceCreateApproved = true;
+  try {
+    await afterSetup();
+  } catch (e) {
+    if (!e.handled) msg('ledgerWarnMsg', 'エラー: ' + e.message, 'error');
+  } finally {
+    forceCreateApproved = false;
+  }
+};
+
+// レコードの同一性: id(なければkey。attributeDefinitions用)
+function recordIdentity(r) {
+  if (!r) return undefined;
+  return r.id !== undefined ? r.id : r.key;
+}
+
+// id単位のマージ: 片方にしかないレコードは残し、両方にあれば updatedAt が新しい方を採用
+function mergeRecords(localArr, remoteArr) {
+  const merged = new Map();
+  for (const r of remoteArr || []) {
+    const key = recordIdentity(r);
+    if (key !== undefined) merged.set(key, r);
+  }
+  for (const r of localArr || []) {
+    const key = recordIdentity(r);
+    if (key === undefined) continue;
+    const other = merged.get(key);
+    if (!other) { merged.set(key, r); continue; }
+    const lu = r.updatedAt || '';
+    const ru = other.updatedAt || '';
+    if (lu >= ru) merged.set(key, r); // 同時刻・両方欠落はローカル優先
+  }
+  return Array.from(merged.values());
+}
+
+// 実際の書き込み(マージなし)。移行処理など「読んだ直後に書く」場面専用
+async function writeLedger(ledger) {
+  ledger.data.updatedAt = new Date().toISOString();
+  await updateFileContent(ledger.fileId, JSON.stringify(ledger.data, null, 2), 'application/json');
+}
+
+// 日次バックアップ: その日最初の保存の前に、書き込み前の台帳を _db/backup/ にコピーする。
+// バックアップの失敗は本体の保存を妨げない
+let backupFolderId = null;
+async function backupLedgerDaily(ledger) {
+  try {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const ymd = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+    const backupName = ledger.name.replace(/\.json$/, '') + '-' + ymd + '.json';
+    if (!backupFolderId) backupFolderId = await ensureFolder(dbFolderId, 'backup');
+    if (await findChild(backupFolderId, backupName, false)) return; // 今日の分は作成済み
+    await driveFetch('https://www.googleapis.com/drive/v3/files/' + ledger.fileId + '/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: backupName, parents: [backupFolderId] })
+    });
+  } catch (e) {
+    // バックアップ失敗は無視して本体の保存を続行
+  }
+}
+
+// 楽観的ロック: 編集画面を開いた時点のupdatedAtと、Drive上の現在のupdatedAtを比較し、
+// 別の端末で更新されていた場合は上書き確認を出す。
+// 読み直しが失敗したときは警告なしで保存を続行する(項目2と同じ可用性優先の方針)
+async function confirmOverwriteIfChanged(ledger, arrayKey, recordId, baseUpdatedAt, label) {
+  let remoteRec = null;
+  try {
+    const remote = await readJson(ledger.fileId);
+    remoteRec = (remote[arrayKey] || []).find(r => r && r.id === recordId) || null;
+  } catch (e) {
+    return true; // 確認できないときは従来どおり保存を続行
+  }
+  const remoteUpdatedAt = remoteRec ? (remoteRec.updatedAt || null) : null;
+  if (remoteRec && remoteUpdatedAt !== baseUpdatedAt) {
+    return confirm('この' + label + 'は、編集を開いた後に別の端末で更新されています。\n上書きして保存しますか?');
+  }
+  return true;
+}
+
+// 保存 = Drive上の最新を読み直し→レコード単位でマージ→(日次バックアップ)→書き込み。
+// 2人同時利用や開きっぱなしのタブで、相手の更新を上書き消去しないため
+async function saveLedger(ledger) {
+  try {
+    const remote = await readJson(ledger.fileId);
+    for (const key of (LEDGER_ARRAY_KEYS[ledger.name] || [])) {
+      if (Array.isArray(ledger.data[key]) || Array.isArray(remote[key])) {
+        ledger.data[key] = mergeRecords(ledger.data[key] || [], remote[key] || []);
+      }
+    }
+  } catch (e) {
+    // 読み直し失敗(通信断・破損など)時はローカル優先で書き込みを続行
+  }
+  await backupLedgerDaily(ledger);
+  await writeLedger(ledger);
+}
+
+function newId() {
+  return (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+}
+
+// schemaVersion 1 → 2 移行: 旧形式のID(スラッグ+タイムスタンプ)をUUIDに振り直し、
+// レコード間の参照(dolls.categoryId, logs.dollId)も追随させる。一度だけ実行される。
+function migrateLedgersToV2() {
+  const needs = [settings, dolls, logs].some(l => (l.data.schemaVersion || 1) < 2);
+  if (!needs) return false;
+  const now = new Date().toISOString();
+  const catMap = {}, dollMap = {};
+  for (const c of settings.data.categories || []) {
+    const nid = newId(); catMap[c.id] = nid; c.id = nid;
+    if (!c.createdAt) c.createdAt = now;
+    if (!c.updatedAt) c.updatedAt = now;
+  }
+  for (const d of dolls.data.dolls || []) {
+    const nid = newId(); dollMap[d.id] = nid; d.id = nid;
+    if (catMap[d.categoryId] !== undefined) d.categoryId = catMap[d.categoryId];
+    if (!d.updatedAt) d.updatedAt = d.createdAt || now;
+  }
+  for (const l of logs.data.logs || []) {
+    l.id = newId();
+    if (dollMap[l.dollId] !== undefined) l.dollId = dollMap[l.dollId];
+    if (!l.updatedAt) l.updatedAt = l.createdAt || now;
+  }
+  settings.data.schemaVersion = 2;
+  dolls.data.schemaVersion = 2;
+  logs.data.schemaVersion = 2;
+  return true;
+}
+
+async function initLedgers() {
+  // _dbフォルダの「既存かどうか」は消失検知の判定Aに使うため、検索と作成を分ける
+  const foundDb = await findChild(rootFolderId, '_db', true);
+  const dbExisted = !!foundDb;
+  dbFolderId = dbExisted ? foundDb.id : await createFolder(rootFolderId, '_db');
+  backupFolderId = null; // 保存先が変わった場合に備えてキャッシュを破棄
+
+  const files = await listDbFiles();
+
+  // 警告文に使う保存先フォルダ名(固定名にしない。選び直しで別名の可能性があるため)
+  const folderLabel = localStorage.getItem(LS_FOLDER_NAME) || '保存先フォルダ';
+
+  // (c) 同名重複検知: 3台帳すべて対象。自動でどちらかを読むことはしない
+  const dupNames = LEDGER_NAMES.filter(n => files.filter(f => f.name === n).length >= 2);
+  if (dupNames.length > 0) {
+    showLedgerProblem(
+      '⚠️ _dbフォルダの中に ' + dupNames.map(n => '「' + n + '」').join('・') +
+      ' が2つ以上見つかりました。\n\nどちらが正しいデータか自動では判定できないため、' +
+      '安全のため停止しました。\nGoogleドライブで ' + folderLabel + '/_db を開き、中身を確認して' +
+      '正しい方だけを残してください(不要な方は名前を変えるかゴミ箱へ)。\n' +
+      'その後、このアプリを開き直してください。', false);
+    throw ledgerProblemError();
+  }
+
+  // (a) 消失検知: 過去に台帳が存在した形跡があるのに見つからない場合は自動作成しない。
+  // 判定A: _dbフォルダが既存(台帳と_dbは必ず同時に作られるため、_dbだけある状態は消失の証拠)
+  // 判定B: この端末での利用実績(localStorage。_dbフォルダごと消された場合を補完)
+  const missing = LEDGER_NAMES.filter(n => !files.some(f => f.name === n));
+  const seenKey = 'dollapp_ledgerSeen_' + rootFolderId;
+  const seenBefore = localStorage.getItem(seenKey) === '1';
+  if (missing.length > 0 && (dbExisted || seenBefore) && !forceCreateApproved) {
+    pendingMissingLedgers = missing;
+    showLedgerProblem(
+      '⚠️ 台帳ファイル(' + missing.join(' / ') + ')が見つかりません。\n\n' +
+      '以前このフォルダでデータを使っていた形跡があります。\n' +
+      'Googleドライブのゴミ箱に該当ファイルがないか確認し、あれば右クリック→「復元」' +
+      'してから、このアプリを開き直してください。\n' +
+      '(ゴミ箱の保管期限は30日です。期限を過ぎると復元できません)\n\n' +
+      'ゴミ箱に見つからない場合(自分以外のアカウントで削除された場合など)は、' +
+      'Googleドライブ上部の検索欄でファイル名(例: ' + missing[0] + ')を検索してください。' +
+      '見つかったら右クリック→「整理」→「移動」で ' + folderLabel + '/_db に戻せます。\n\n' +
+      'また、' + folderLabel + '/_db/backup フォルダに日次コピー(例: dolls-日付.json)が' +
+      '残っている場合は、そこからの復元もできます。', true);
+    throw ledgerProblemError();
+  }
+
+  // (d) 初回利用、または(b)で明示的に承認された場合のみ、無いファイルだけを新規作成する
+  // (存在するファイルには読み込み以外の操作をしない)
+  settings = await loadOrCreateLedger('settings.json', files, {
+    schemaVersion: 2, categories: [], attributeDefinitions: []
+  });
+  dolls = await loadOrCreateLedger('dolls.json', files, { schemaVersion: 2, dolls: [] });
+  logs = await loadOrCreateLedger('logs.json', files, { schemaVersion: 2, logs: [] });
+
+  if (migrateLedgersToV2()) {
+    // 移行直後は読んだばかりの内容を書くだけなのでマージ不要(旧IDが復活してしまうため)
+    await writeLedger(settings);
+    await writeLedger(dolls);
+    await writeLedger(logs);
+  }
+
+  // 台帳の読み込み/作成に成功した実績を端末に記録(判定B用)
+  localStorage.setItem(seenKey, '1');
+  pendingMissingLedgers = null;
+}
+
+// ================= 起動フロー =================
+let currentUserEmail = '';
+
+document.getElementById('btnLogin').onclick = async () => {
+  try {
+    msg('loginMsg', 'ログイン中...(アカウント選択画面が開きます)');
+    await ensureToken(true);
+    gapi.load('picker', () => { pickerReady = true; });
+    try {
+      const about = await (await driveFetch('https://www.googleapis.com/drive/v3/about?fields=user')).json();
+      currentUserEmail = (about.user && about.user.emailAddress) || '';
+    } catch (e) { currentUserEmail = ''; }
+    // 保存済みフォルダIDが有効か確認(フォルダの検証と台帳読み込みは分けて扱う:
+    // 台帳側のエラーで保存先設定を消してしまわないため)
+    let folderOk = false;
+    if (rootFolderId) {
+      try {
+        const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + rootFolderId + '?fields=id,name');
+        const meta = await res.json();
+        localStorage.setItem(LS_FOLDER_NAME, meta.name);
+        folderOk = true;
+      } catch (e) {
+        // 別アカウントに切り替えた直後などは、保存済みIDにアクセスできないので選び直しへ
+        rootFolderId = null;
+        localStorage.removeItem(LS_FOLDER);
+        localStorage.removeItem(LS_FOLDER_NAME);
+      }
+    }
+    if (folderOk) {
+      await afterSetup(); // 台帳破損などのエラーは外側のcatchでメッセージ表示される
+      return;
+    }
+    show('scr-setup');
+  } catch (e) {
+    if (!e.handled) msg('loginMsg', 'ログインに失敗しました: ' + e.message, 'error');
+  }
+};
+
+document.getElementById('btnPickFolder').onclick = () => {
+  if (!pickerReady) { msg('setupMsg', '準備中です。数秒待ってもう一度押してください。'); return; }
+  const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+    .setSelectFolderEnabled(true)
+    .setIncludeFolders(true)
+    .setMimeTypes('application/vnd.google-apps.folder');
+  new google.picker.PickerBuilder()
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(API_KEY)
+    .setAppId(APP_ID)
+    .addView(view)
+    .setTitle('hasune フォルダを選んでください')
+    .setCallback(async (data) => {
+      if (data.action !== google.picker.Action.PICKED) return;
+      const picked = data.docs[0];
+      if (picked.name !== 'hasune') {
+        const ok = confirm('選んだフォルダは「' + picked.name + '」です。\n保存先は通常「hasune」フォルダです。\n本当にこのフォルダを保存先にしますか?\n\n(間違えた場合は「キャンセル」を押して、hasuneを選び直してください)');
+        if (!ok) { msg('setupMsg', 'もう一度「hasune フォルダを選ぶ」を押して選び直してください。'); return; }
+      }
+      rootFolderId = picked.id;
+      localStorage.setItem(LS_FOLDER, rootFolderId);
+      localStorage.setItem(LS_FOLDER_NAME, picked.name);
+      msg('setupMsg', '「' + picked.name + '」を保存先に設定しました。準備中...', 'ok');
+      try { await afterSetup(); } catch (e) { if (!e.handled) msg('setupMsg', 'エラー: ' + e.message, 'error'); }
+    })
+    .build().setVisible(true);
+};
+
+function homeNoteText() {
+  const n = dolls.data.dolls.filter(d => !d.archived && d.visible !== false).length;
+  const fname = localStorage.getItem(LS_FOLDER_NAME) || '(不明)';
+  let text = '登録済み: ' + n + '体 / 保存先フォルダ: ' + fname;
+  if (currentUserEmail) text += '\nログイン中: ' + currentUserEmail;
+  text += '\n版: ' + APP_VERSION;
+  return text;
+}
+
+document.getElementById('loginVer').textContent = '版: ' + APP_VERSION;
+
+async function afterSetup() {
+  await initLedgers();
+  document.getElementById('homeNote').textContent = homeNoteText();
+  show('scr-home');
+}
+
+// ================= ホーム =================
+document.getElementById('btnGoRegister').onclick = () => { buildCategorySelect(); show('scr-register'); };
+document.getElementById('btnGoList').onclick = () => { renderList(); show('scr-list'); };
+document.getElementById('btnBackFromRegister').onclick = () => { refreshHome(); };
+document.getElementById('btnBackFromList').onclick = () => { refreshHome(); };
+function refreshHome() {
+  document.getElementById('homeNote').textContent = homeNoteText();
+  show('scr-home');
+}
+
+// 🔄最新に更新: Driveから台帳を読み直して再描画する。
+// ホーム画面にのみ存在するボタンのため、編集画面を開いている間は押せない
+// (入力中の内容を消すルートを作らない)。
+// 3台帳すべての読み直しに成功してからメモリを差し替える(途中失敗時は一切変更しない)
+document.getElementById('btnRefresh').onclick = async () => {
+  const btn = document.getElementById('btnRefresh');
+  btn.disabled = true;
+  msg('homeMsg', '更新中...');
+  try {
+    const newSettings = await readJson(settings.fileId);
+    const newDolls = await readJson(dolls.fileId);
+    const newLogs = await readJson(logs.fileId);
+    settings.data = newSettings;
+    dolls.data = newDolls;
+    logs.data = newLogs;
+    document.getElementById('homeNote').textContent = homeNoteText();
+    msg('homeMsg', '最新の状態に更新しました', 'ok');
+  } catch (e) {
+    msg('homeMsg', '更新に失敗しました(通信状態を確認してください)。表示中のデータは変更していません。', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btnRepickFolder').onclick = () => {
+  if (!confirm('保存先フォルダを選び直しますか?\n(登録済みのデータが消えることはありません)')) return;
+  rootFolderId = null;
+  localStorage.removeItem(LS_FOLDER);
+  msg('setupMsg', '');
+  show('scr-setup');
+};
+
+// ================= 人形登録 =================
+const regPhoto = document.getElementById('regPhoto');
+const regPreview = document.getElementById('regPreview');
+const regCategory = document.getElementById('regCategory');
+const regNewCategory = document.getElementById('regNewCategory');
+
+regPhoto.addEventListener('change', () => {
+  const f = regPhoto.files[0];
+  if (f) { regPreview.src = URL.createObjectURL(f); regPreview.style.display = 'block'; }
 });
 
-photoInput.addEventListener('change', () => {
-  const file = photoInput.files[0];
-  if (file) {
-    preview.src = URL.createObjectURL(file);
-    preview.style.display = 'block';
+function buildCategorySelect() {
+  regCategory.innerHTML = '';
+  for (const c of settings.data.categories) {
+    const op = document.createElement('option');
+    op.value = c.id; op.textContent = c.name;
+    regCategory.appendChild(op);
   }
+  const opNew = document.createElement('option');
+  opNew.value = '__new__'; opNew.textContent = '＋ 新規カテゴリを作る';
+  regCategory.appendChild(opNew);
+  if (settings.data.categories.length === 0) regCategory.value = '__new__';
+  regNewCategory.style.display = regCategory.value === '__new__' ? 'block' : 'none';
+}
+regCategory.addEventListener('change', () => {
+  regNewCategory.style.display = regCategory.value === '__new__' ? 'block' : 'none';
 });
 
 function timestamp() {
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 function loadImage(file) {
@@ -81,24 +925,20 @@ function loadImage(file) {
 async function createCaptionedImage(file, charName, catchCopy) {
   const img = await loadImage(file);
   const canvas = document.createElement('canvas');
-  canvas.width = img.width;
-  canvas.height = img.height;
+  canvas.width = img.width; canvas.height = img.height;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0);
-
   const barHeight = Math.max(canvas.height * 0.2, 140);
   const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
   gradient.addColorStop(0, 'rgba(0,0,0,0)');
   gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
-
   const padding = canvas.width * 0.05;
   const nameFontSize = Math.round(canvas.width * 0.06);
   const catchFontSize = Math.round(canvas.width * 0.042);
   ctx.textBaseline = 'bottom';
   ctx.fillStyle = '#ffffff';
-
   let y = canvas.height - padding;
   if (catchCopy) {
     ctx.font = `${catchFontSize}px sans-serif`;
@@ -109,66 +949,804 @@ async function createCaptionedImage(file, charName, catchCopy) {
     ctx.font = `bold ${nameFontSize}px sans-serif`;
     ctx.fillText(charName, padding, y);
   }
-
   return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
 }
 
-function downloadFile(file) {
-  const url = URL.createObjectURL(file);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = file.name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+document.getElementById('btnSaveDoll').onclick = async () => {
+  const btn = document.getElementById('btnSaveDoll');
+  const file = regPhoto.files[0];
+  const name = document.getElementById('regName').value.trim();
+  const catchCopy = document.getElementById('regCatch').value.trim();
+  if (!file) { msg('regMsg', '写真を選んでください', 'error'); return; }
+  if (!name) { msg('regMsg', 'キャラ名を入力してください', 'error'); return; }
+  let categoryId = regCategory.value;
+  const newCatName = regNewCategory.value.trim();
+  if (categoryId === '__new__' && !newCatName) { msg('regMsg', '新しいカテゴリ名を入力してください', 'error'); return; }
+
+  // 同一カテゴリ内に同名の人形がいるとフォルダが共有されてしまうため中断
+  if (categoryId !== '__new__') {
+    const dup = findDuplicateDollName(categoryId, name, null);
+    if (dup) {
+      msg('regMsg', '同じ名前の人形「' + name + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  try {
+    await refreshTokenIfExpiringSoon();
+    // カテゴリ(必要なら新規作成: Driveフォルダ + settings.json)
+    let category;
+    if (categoryId === '__new__') {
+      msg('regMsg', 'カテゴリを作成中...');
+      const folderId = await ensureFolder(rootFolderId, newCatName);
+      const nowIso = new Date().toISOString();
+      category = { id: newId(), name: newCatName, folderId, createdAt: nowIso, updatedAt: nowIso };
+      settings.data.categories.push(category);
+      await saveLedger(settings);
+    } else {
+      category = settings.data.categories.find(c => c.id === categoryId);
+      if (!category.folderId) { // 念のため
+        category.folderId = await ensureFolder(rootFolderId, category.name);
+        await saveLedger(settings);
+      }
+    }
+
+    // キャラフォルダ + profileフォルダ
+    msg('regMsg', 'フォルダを準備中...');
+    const dollFolderId = await ensureFolder(category.folderId, name);
+    const profileFolderId = await ensureFolder(dollFolderId, 'profile');
+
+    // ファイル生成
+    msg('regMsg', '画像を作成中...');
+    const ts = timestamp();
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const baseName = [category.name, name, ts].join('_');
+    const BOM = String.fromCharCode(0xFEFF);
+    const textContent = `${BOM}【カテゴリ】\n${category.name}\n\n【キャラ名】\n${name}\n\n【キャッチコピー】\n${catchCopy}\n`;
+    const cardBlob = await createCaptionedImage(file, name, catchCopy);
+
+    // アップロード(3ファイル)
+    msg('regMsg', '写真をアップロード中... (1/3)');
+    const photoFileId = await uploadFile(profileFolderId, `${baseName}.${ext}`, file, file.type);
+    msg('regMsg', 'テキストをアップロード中... (2/3)');
+    const textFileId = await uploadFile(profileFolderId, `${baseName}.txt`,
+      new Blob([textContent], { type: 'text/plain' }), 'text/plain');
+    msg('regMsg', 'カード画像をアップロード中... (3/3)');
+    const cardFileId = cardBlob
+      ? await uploadFile(profileFolderId, `${baseName}_card.jpg`, cardBlob, 'image/jpeg')
+      : null;
+
+    // 台帳に登録
+    msg('regMsg', '台帳に登録中...');
+    const now = new Date().toISOString();
+    dolls.data.dolls.push({
+      id: newId(),
+      categoryId: category.id,
+      name, catchcopy: catchCopy,
+      folderId: dollFolderId,
+      profileFolderId,
+      profilePhotoFileId: photoFileId,
+      profileTextFileId: textFileId,
+      profileCardFileId: cardFileId,
+      createdAt: now, updatedAt: now,
+      archived: false, archivedAt: null, archivedReason: null, visible: true,
+      attributes: {}
+    });
+    await saveLedger(dolls);
+
+    msg('regMsg', `「${name}」を登録しました!\n保存先: hasune/${category.name}/${name}/profile/`, 'ok');
+    regPhoto.value = ''; regPreview.style.display = 'none';
+    document.getElementById('regName').value = '';
+    document.getElementById('regCatch').value = '';
+    regNewCategory.value = '';
+    buildCategorySelect();
+  } catch (e) {
+    msg('regMsg', '保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ================= 一覧 =================
+async function renderList() {
+  const listEl = document.getElementById('dollList');
+  listEl.innerHTML = '';
+  msg('listMsg', '');
+  const items = dolls.data.dolls.filter(d => !d.archived && d.visible !== false);
+  if (items.length === 0) {
+    msg('listMsg', 'まだ登録がありません。「人形を登録する」から始めてください。');
+    return;
+  }
+  for (const d of items) {
+    const cat = settings.data.categories.find(c => c.id === d.categoryId);
+    const div = document.createElement('div');
+    div.className = 'doll-item';
+    const img = document.createElement('img');
+    img.alt = d.name;
+    div.appendChild(img);
+    const info = document.createElement('div');
+    info.className = 'info';
+    info.innerHTML = '<div class="name"></div><div class="catch"></div><div class="cat"></div>';
+    info.querySelector('.name').textContent = d.name;
+    info.querySelector('.catch').textContent = d.catchcopy || '';
+    info.querySelector('.cat').textContent = cat ? cat.name : d.categoryId;
+    div.appendChild(info);
+    div.onclick = () => openDetail(d.id);
+    listEl.appendChild(div);
+    // サムネイルは非同期で読み込み
+    if (d.profilePhotoFileId) {
+      driveFetch('https://www.googleapis.com/drive/v3/files/' + d.profilePhotoFileId + '?alt=media')
+        .then(r => r.blob())
+        .then(b => { img.src = URL.createObjectURL(b); })
+        .catch(() => {});
+    }
+  }
 }
 
-saveBtn.addEventListener('click', async () => {
-  const file = photoInput.files[0];
-  if (!file) {
-    statusEl.textContent = '写真を選んでください';
+// ================= キャラクター詳細 =================
+let currentDollId = null;
+
+document.getElementById('btnBackFromDetail').onclick = () => { renderList(); show('scr-list'); };
+document.getElementById('btnAddLogFromDetail').onclick = () => openLogForm(currentDollId, 'detail');
+
+function openDetail(dollId) {
+  currentDollId = dollId;
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) return;
+  const cat = settings.data.categories.find(c => c.id === d.categoryId);
+
+  // プロフィール
+  const prof = document.getElementById('detailProfile');
+  prof.innerHTML = '<img alt=""><div><div class="name"></div><div class="catch"></div><div class="cat"></div></div>';
+  prof.querySelector('.name').textContent = d.name;
+  prof.querySelector('.catch').textContent = d.catchcopy || '';
+  prof.querySelector('.cat').textContent = cat ? cat.name : d.categoryId;
+  if (d.profilePhotoFileId) {
+    driveFetch('https://www.googleapis.com/drive/v3/files/' + d.profilePhotoFileId + '?alt=media')
+      .then(r => r.blob()).then(b => { prof.querySelector('img').src = URL.createObjectURL(b); })
+      .catch(() => {});
+  }
+
+  // 活動ログ一覧(新しい順)
+  const logsEl = document.getElementById('detailLogs');
+  logsEl.innerHTML = '';
+  const items = logs.data.logs
+    .filter(l => l.dollId === dollId && !l.archived && l.visible !== false)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  msg('detailMsg', items.length === 0 ? 'まだ活動ログがありません。' : '');
+  for (const l of items) {
+    const card = document.createElement('div');
+    card.className = 'log-card';
+    const head = document.createElement('div');
+    head.className = 'log-head';
+    const date = document.createElement('div');
+    date.className = 'date';
+    date.textContent = (l.createdAt || '').slice(0, 10);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'mini';
+    editBtn.textContent = '✏️ 編集';
+    editBtn.onclick = () => openEditLog(l.id);
+    head.append(date, editBtn);
+    card.appendChild(head);
+    if (l.memo) {
+      const memo = document.createElement('div');
+      memo.className = 'memo';
+      memo.textContent = l.memo;
+      card.appendChild(memo);
+    }
+    if (l.media && l.media.length) {
+      const thumbs = document.createElement('div');
+      thumbs.className = 'log-thumbs';
+      for (const m of l.media) {
+        if ((m.mimeType || '').startsWith('video/')) {
+          const v = document.createElement('div');
+          v.className = 'video-chip';
+          v.textContent = '🎬';
+          thumbs.appendChild(v);
+        } else {
+          const im = document.createElement('img');
+          thumbs.appendChild(im);
+          driveFetch('https://www.googleapis.com/drive/v3/files/' + m.fileId + '?alt=media')
+            .then(r => r.blob()).then(b => { im.src = URL.createObjectURL(b); })
+            .catch(() => {});
+        }
+      }
+      card.appendChild(thumbs);
+    }
+    const attrs = l.attributes || {};
+    const keys = Object.keys(attrs);
+    if (keys.length) {
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      for (const k of keys) {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = k + ': ' + attrs[k];
+        chips.appendChild(chip);
+      }
+      card.appendChild(chips);
+    }
+    logsEl.appendChild(card);
+  }
+  show('scr-detail');
+}
+
+// ================= 活動ログ保存 =================
+let logReturnTo = 'home';
+
+document.getElementById('btnGoLog').onclick = () => openLogForm(null, 'home');
+document.getElementById('btnBackFromLog').onclick = () => {
+  if (logReturnTo === 'detail' && currentDollId) openDetail(currentDollId);
+  else refreshHome();
+};
+
+const logMedia = document.getElementById('logMedia');
+logMedia.addEventListener('change', () => {
+  const files = Array.from(logMedia.files);
+  document.getElementById('logMediaInfo').textContent =
+    files.length ? files.length + '件選択中: ' + files.map(f => f.name).join(', ') : '';
+});
+
+function addAttrRow(containerId, key, value) {
+  const row = document.createElement('div');
+  row.className = 'attr-row';
+  const kIn = document.createElement('input');
+  kIn.type = 'text'; kIn.placeholder = '項目名(例: イベント種別)'; kIn.value = key || '';
+  const vIn = document.createElement('input');
+  vIn.type = 'text'; vIn.placeholder = '値(例: 販売)'; vIn.value = value || '';
+  const del = document.createElement('button');
+  del.className = 'del'; del.textContent = '✕';
+  del.onclick = () => row.remove();
+  row.append(kIn, vIn, del);
+  document.getElementById(containerId).appendChild(row);
+}
+document.getElementById('btnAddAttr').onclick = () => addAttrRow('logAttrs');
+
+function collectAttrs(containerId) {
+  const attributes = {};
+  document.querySelectorAll('#' + containerId + ' .attr-row').forEach(row => {
+    const [kIn, vIn] = row.querySelectorAll('input');
+    const k = kIn.value.trim();
+    if (k) attributes[k] = vIn.value.trim();
+  });
+  return attributes;
+}
+
+function openLogForm(dollId, returnTo) {
+  logReturnTo = returnTo;
+  const activeDolls = dolls.data.dolls.filter(d => !d.archived && d.visible !== false);
+  if (activeDolls.length === 0) {
+    alert('先に「人形を登録する」からキャラクターを登録してください。');
+    return;
+  }
+  const sel = document.getElementById('logDoll');
+  sel.innerHTML = '';
+  for (const d of activeDolls) {
+    const op = document.createElement('option');
+    op.value = d.id; op.textContent = d.name;
+    sel.appendChild(op);
+  }
+  if (dollId) sel.value = dollId;
+  logMedia.value = '';
+  document.getElementById('logMediaInfo').textContent = '';
+  document.getElementById('logMemo').value = '';
+  document.getElementById('logAttrs').innerHTML = '';
+  msg('logMsg', '');
+  show('scr-log');
+}
+
+document.getElementById('btnSaveLog').onclick = async () => {
+  const btn = document.getElementById('btnSaveLog');
+  const dollId = document.getElementById('logDoll').value;
+  const memo = document.getElementById('logMemo').value.trim();
+  const files = Array.from(logMedia.files);
+  if (files.length === 0 && !memo) {
+    msg('logMsg', '写真・動画かメモのどちらかは入れてください', 'error');
+    return;
+  }
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) { msg('logMsg', 'キャラクターを選んでください', 'error'); return; }
+
+  // 自由項目を収集
+  const attributes = collectAttrs('logAttrs');
+
+  btn.disabled = true;
+  try {
+    await refreshTokenIfExpiringSoon();
+    msg('logMsg', 'フォルダを準備中...');
+    const logsFolderId = await ensureFolder(d.folderId, 'logs');
+    const ts = timestamp();
+    const media = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      msg('logMsg', `アップロード中... (${i + 1}/${files.length}) ${f.name}\n(動画は時間がかかることがあります)`);
+      const ext = (f.name.split('.').pop() || 'bin').toLowerCase();
+      const fname = `${d.name}_log_${ts}_${String(i + 1).padStart(2, '0')}.${ext}`;
+      const fileId = await uploadFile(logsFolderId, fname, f, f.type);
+      media.push({ fileId, mimeType: f.type, name: fname });
+    }
+
+    // 人間が読める控えのtxt
+    msg('logMsg', '記録を保存中...');
+    const BOM = String.fromCharCode(0xFEFF);
+    let text = `${BOM}【キャラ名】\n${d.name}\n\n【メモ】\n${memo}\n`;
+    for (const k of Object.keys(attributes)) text += `\n【${k}】\n${attributes[k]}\n`;
+    const textFileId = await uploadFile(logsFolderId, `${d.name}_log_${ts}.txt`,
+      new Blob([text], { type: 'text/plain' }), 'text/plain');
+
+    const now = new Date().toISOString();
+    logs.data.logs.push({
+      id: newId(),
+      dollId, memo, media, textFileId,
+      createdAt: now, updatedAt: now,
+      archived: false, archivedAt: null, archivedReason: null, visible: true,
+      attributes
+    });
+    await saveLedger(logs);
+
+    msg('logMsg', `「${d.name}」の活動ログを保存しました!(写真・動画 ${media.length}件)`, 'ok');
+    logMedia.value = '';
+    document.getElementById('logMediaInfo').textContent = '';
+    document.getElementById('logMemo').value = '';
+    document.getElementById('logAttrs').innerHTML = '';
+  } catch (e) {
+    msg('logMsg', '保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ================= Drive リネーム・移動 =================
+async function renameDriveFile(fileId, newName) {
+  await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: newName })
+  });
+}
+async function moveDriveFile(fileId, newParentId, oldParentId) {
+  await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId
+    + '?addParents=' + newParentId + '&removeParents=' + oldParentId, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+}
+
+// ================= プロフィール編集 =================
+const edPhoto = document.getElementById('edPhoto');
+const edPreview = document.getElementById('edPreview');
+edPhoto.addEventListener('change', () => {
+  const f = edPhoto.files[0];
+  if (f) { edPreview.src = URL.createObjectURL(f); edPreview.style.display = 'block'; }
+});
+document.getElementById('btnAddEdAttr').onclick = () => addAttrRow('edAttrs');
+document.getElementById('btnBackFromEditDoll').onclick = () => openDetail(currentDollId);
+document.getElementById('btnEditDoll').onclick = () => openEditDoll(currentDollId);
+
+// 同名人形チェック(項目8と同一基準): 同一カテゴリ内・trim済み完全一致・
+// 非アーカイブ・自分以外(excludeIdがnullなら全件が対象=新規登録用)
+function findDuplicateDollName(categoryId, name, excludeId) {
+  return dolls.data.dolls.find(x =>
+    x.categoryId === categoryId && !x.archived && x.id !== excludeId && x.name === name);
+}
+
+let editDollBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
+
+function openEditDoll(dollId) {
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) return;
+  editDollBaseUpdatedAt = d.updatedAt || null;
+  edPhoto.value = '';
+  edPreview.style.display = 'none';
+  const sel = document.getElementById('edCategory');
+  sel.innerHTML = '';
+  for (const c of settings.data.categories) {
+    const op = document.createElement('option');
+    op.value = c.id; op.textContent = c.name;
+    sel.appendChild(op);
+  }
+  sel.value = d.categoryId;
+  document.getElementById('edName').value = d.name;
+  document.getElementById('edCatch').value = d.catchcopy || '';
+  const attrsEl = document.getElementById('edAttrs');
+  attrsEl.innerHTML = '';
+  for (const k of Object.keys(d.attributes || {})) addAttrRow('edAttrs', k, d.attributes[k]);
+  msg('edMsg', '');
+  show('scr-editdoll');
+}
+
+document.getElementById('btnSaveEditDoll').onclick = async () => {
+  const btn = document.getElementById('btnSaveEditDoll');
+  const d = dolls.data.dolls.find(x => x.id === currentDollId);
+  if (!d) return;
+  const newName = document.getElementById('edName').value.trim();
+  const newCatch = document.getElementById('edCatch').value.trim();
+  const newCatId = document.getElementById('edCategory').value;
+  if (!newName) { msg('edMsg', 'キャラ名を入力してください', 'error'); return; }
+
+  // 名前またはカテゴリを変更する場合、変更後のカテゴリ内の同名チェック
+  // (Driveのフォルダ名変更・移動を実行する前に必ず行う)
+  if (newName !== d.name || newCatId !== d.categoryId) {
+    const dup = findDuplicateDollName(newCatId, newName, d.id);
+    if (dup) {
+      msg('edMsg', '同じ名前の人形「' + newName + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  try {
+    await refreshTokenIfExpiringSoon();
+    // 楽観的ロック: 別の端末で更新されていたら上書き確認(Drive操作より前に行う)
+    const okToSave = await confirmOverwriteIfChanged(dolls, 'dolls', currentDollId, editDollBaseUpdatedAt, '人形');
+    if (!okToSave) {
+      msg('edMsg', '保存を中止しました。編集内容は画面に残っています。');
+      return;
+    }
+    // キャラ名変更 → Driveのキャラフォルダ名も変更
+    if (newName !== d.name && d.folderId) {
+      msg('edMsg', 'フォルダ名を変更中...');
+      await renameDriveFile(d.folderId, newName);
+    }
+    // カテゴリ変更 → キャラフォルダを新カテゴリフォルダへ移動
+    if (newCatId !== d.categoryId) {
+      const oldCat = settings.data.categories.find(c => c.id === d.categoryId);
+      const newCat = settings.data.categories.find(c => c.id === newCatId);
+      if (newCat && d.folderId) {
+        msg('edMsg', 'カテゴリを移動中...');
+        if (!newCat.folderId) {
+          newCat.folderId = await ensureFolder(rootFolderId, newCat.name);
+          await saveLedger(settings);
+        }
+        await moveDriveFile(d.folderId, newCat.folderId, oldCat ? oldCat.folderId : rootFolderId);
+      }
+      d.categoryId = newCatId;
+    }
+    // 写真の差し替え(任意)
+    const newPhoto = edPhoto.files[0];
+    if (newPhoto) {
+      msg('edMsg', '新しい写真をアップロード中...');
+      const ts = timestamp();
+      const cat = settings.data.categories.find(c => c.id === d.categoryId);
+      const ext = (newPhoto.name.split('.').pop() || 'jpg').toLowerCase();
+      const baseName = [(cat ? cat.name : ''), newName, ts].filter(Boolean).join('_');
+      d.profilePhotoFileId = await uploadFile(d.profileFolderId, `${baseName}.${ext}`, newPhoto, newPhoto.type);
+      const cardBlob = await createCaptionedImage(newPhoto, newName, newCatch);
+      if (cardBlob) {
+        d.profileCardFileId = await uploadFile(d.profileFolderId, `${baseName}_card.jpg`, cardBlob, 'image/jpeg');
+      }
+    }
+    d.name = newName;
+    d.catchcopy = newCatch;
+    d.attributes = collectAttrs('edAttrs');
+    d.updatedAt = new Date().toISOString();
+    msg('edMsg', '台帳を更新中...');
+    await saveLedger(dolls);
+    msg('edMsg', '保存しました!', 'ok');
+    setTimeout(() => openDetail(currentDollId), 600);
+  } catch (e) {
+    msg('edMsg', '保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btnArchiveDoll').onclick = async () => {
+  const d = dolls.data.dolls.find(x => x.id === currentDollId);
+  if (!d) return;
+  if (!confirm(`「${d.name}」をアーカイブして一覧から隠しますか?\n(データやファイルは消えません。後から戻せます)`)) return;
+  const reason = prompt('理由をメモしておけます(空欄でもOK)', '') || null;
+  try {
+    d.archived = true;
+    d.archivedAt = new Date().toISOString();
+    d.archivedReason = reason;
+    d.updatedAt = d.archivedAt;
+    await saveLedger(dolls);
+    renderList();
+    show('scr-list');
+  } catch (e) {
+    msg('edMsg', 'アーカイブに失敗しました: ' + e.message, 'error');
+  }
+};
+
+// ================= 活動ログ編集 =================
+let currentLogId = null;
+document.getElementById('btnAddElAttr').onclick = () => addAttrRow('elAttrs');
+document.getElementById('btnBackFromEditLog').onclick = () => openDetail(currentDollId);
+
+let editLogBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
+
+function openEditLog(logId) {
+  currentLogId = logId;
+  const l = logs.data.logs.find(x => x.id === logId);
+  if (!l) return;
+  editLogBaseUpdatedAt = l.updatedAt || null;
+  document.getElementById('elMemo').value = l.memo || '';
+  const attrsEl = document.getElementById('elAttrs');
+  attrsEl.innerHTML = '';
+  for (const k of Object.keys(l.attributes || {})) addAttrRow('elAttrs', k, l.attributes[k]);
+  msg('elMsg', '');
+  show('scr-editlog');
+}
+
+document.getElementById('btnSaveEditLog').onclick = async () => {
+  const btn = document.getElementById('btnSaveEditLog');
+  const l = logs.data.logs.find(x => x.id === currentLogId);
+  if (!l) return;
+  btn.disabled = true;
+  try {
+    await refreshTokenIfExpiringSoon();
+    // 楽観的ロック: 別の端末で更新されていたら上書き確認(レコードを書き換える前に行う)
+    const okToSave = await confirmOverwriteIfChanged(logs, 'logs', currentLogId, editLogBaseUpdatedAt, '活動ログ');
+    if (!okToSave) {
+      msg('elMsg', '保存を中止しました。編集内容は画面に残っています。');
+      return;
+    }
+    l.memo = document.getElementById('elMemo').value.trim();
+    l.attributes = collectAttrs('elAttrs');
+    l.updatedAt = new Date().toISOString();
+    await saveLedger(logs);
+    msg('elMsg', '保存しました!', 'ok');
+    setTimeout(() => openDetail(currentDollId), 600);
+  } catch (e) {
+    msg('elMsg', '保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btnArchiveLog').onclick = async () => {
+  const l = logs.data.logs.find(x => x.id === currentLogId);
+  if (!l) return;
+  if (!confirm('このログをアーカイブして一覧から隠しますか?\n(ファイルは消えません)')) return;
+  try {
+    l.archived = true;
+    l.archivedAt = new Date().toISOString();
+    l.updatedAt = l.archivedAt;
+    await saveLedger(logs);
+    openDetail(currentDollId);
+  } catch (e) {
+    msg('elMsg', 'アーカイブに失敗しました: ' + e.message, 'error');
+  }
+};
+
+// ================= カテゴリ・キャラ管理 =================
+let manageCatId = null;
+document.getElementById('btnGoManage').onclick = () => { renderManageCats(); show('scr-manage'); };
+document.getElementById('btnBackFromManage').onclick = () => refreshHome();
+document.getElementById('btnBackFromManageChars').onclick = () => { renderManageCats(); show('scr-manage'); };
+
+function renderManageCats() {
+  const el = document.getElementById('manageCats');
+  el.innerHTML = '';
+  msg('manageMsg', settings.data.categories.length === 0 ? 'まだカテゴリがありません。' : '');
+  for (const c of settings.data.categories) {
+    const count = dolls.data.dolls.filter(d => d.categoryId === c.id && !d.archived).length;
+    const item = document.createElement('div');
+    item.className = 'manage-item';
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.innerHTML = '<div></div><div class="sub"></div>';
+    label.children[0].textContent = c.name;
+    label.children[1].textContent = count + '体';
+    label.onclick = () => { manageCatId = c.id; renderManageChars(); show('scr-managechars'); };
+    const btn = document.createElement('button');
+    btn.className = 'mini';
+    btn.textContent = '✏️ 名前変更';
+    btn.onclick = () => renameCategory(c.id);
+    item.append(label, btn);
+    el.appendChild(item);
+  }
+}
+
+async function renameCategory(catId) {
+  const c = settings.data.categories.find(x => x.id === catId);
+  if (!c) return;
+  const newName = prompt('新しいカテゴリ名', c.name);
+  if (!newName || newName.trim() === '' || newName.trim() === c.name) return;
+  // 既存の他カテゴリとの重複チェック(trim済み完全一致)。Drive操作の前に行う
+  if (settings.data.categories.some(x => x.id !== c.id && x.name === newName.trim())) {
+    msg('manageMsg', '同じ名前のカテゴリ「' + newName.trim() + '」が既にあります。別の名前にしてください。', 'error');
+    return;
+  }
+  try {
+    msg('manageMsg', '変更中...');
+    if (c.folderId) await renameDriveFile(c.folderId, newName.trim());
+    c.name = newName.trim();
+    c.updatedAt = new Date().toISOString();
+    await saveLedger(settings);
+    renderManageCats();
+    msg('manageMsg', '変更しました(ドライブのフォルダ名も変更済み)', 'ok');
+  } catch (e) {
+    msg('manageMsg', '変更に失敗しました: ' + e.message, 'error');
+  }
+}
+
+function renderManageChars() {
+  const c = settings.data.categories.find(x => x.id === manageCatId);
+  document.getElementById('manageCharsTitle').textContent = (c ? c.name : '') + ' のキャラクター';
+  const el = document.getElementById('manageChars');
+  el.innerHTML = '';
+  const items = dolls.data.dolls.filter(d => d.categoryId === manageCatId && !d.archived);
+  msg('manageCharsMsg', items.length === 0 ? 'このカテゴリにはまだキャラクターがいません。' : '');
+  for (const d of items) {
+    const item = document.createElement('div');
+    item.className = 'manage-item';
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.innerHTML = '<div></div><div class="sub"></div>';
+    label.children[0].textContent = d.name;
+    label.children[1].textContent = d.catchcopy || '';
+    label.onclick = () => openDetail(d.id);
+    const btn = document.createElement('button');
+    btn.className = 'mini';
+    btn.textContent = '✏️ 名前変更';
+    btn.onclick = () => renameDoll(d.id);
+    item.append(label, btn);
+    el.appendChild(item);
+  }
+}
+
+// ================= 既存ファイル取り込み(移行) =================
+let migrateFiles = []; // Pickerで選んだ {id, name, mimeType}
+
+// 移行ツールはホームから非表示中(必要になったらホームにボタンを戻すだけで使える)
+const btnGoMigrate = document.getElementById('btnGoMigrate');
+if (btnGoMigrate) btnGoMigrate.onclick = () => {
+  const activeDolls = dolls.data.dolls.filter(d => !d.archived);
+  if (activeDolls.length === 0) {
+    alert('先に「人形を登録する」からキャラクターを登録してください。\n(取り込んだファイルの紐付け先が必要です)');
+    return;
+  }
+  migrateFiles = [];
+  document.getElementById('migrateFileList').textContent = '';
+  document.getElementById('migrateOptions').style.display = 'none';
+  msg('migMsg', '');
+  const sel = document.getElementById('migDoll');
+  sel.innerHTML = '';
+  for (const d of activeDolls) {
+    const op = document.createElement('option');
+    op.value = d.id; op.textContent = d.name;
+    sel.appendChild(op);
+  }
+  show('scr-migrate');
+};
+document.getElementById('btnBackFromMigrate').onclick = () => refreshHome();
+
+document.getElementById('btnPickMigrateFiles').onclick = () => {
+  if (!pickerReady) { msg('migMsg', '準備中です。数秒待ってもう一度押してください。'); return; }
+  const view = new google.picker.DocsView()
+    .setIncludeFolders(true)
+    .setParent(rootFolderId);
+  new google.picker.PickerBuilder()
+    .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(API_KEY)
+    .setAppId(APP_ID)
+    .addView(view)
+    .setTitle('取り込む既存ファイルを選んでください(複数可)')
+    .setCallback((data) => {
+      if (data.action !== google.picker.Action.PICKED) return;
+      migrateFiles = data.docs.map(doc => ({ id: doc.id, name: doc.name, mimeType: doc.mimeType }));
+      document.getElementById('migrateFileList').textContent =
+        migrateFiles.length + '件選択:\n' + migrateFiles.map(f => '・' + f.name).join('\n');
+      document.getElementById('migrateOptions').style.display = 'block';
+    })
+    .build().setVisible(true);
+};
+
+async function getParents(fileId) {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?fields=parents');
+  return (await res.json()).parents || [];
+}
+
+document.getElementById('btnRunMigrate').onclick = async () => {
+  const btn = document.getElementById('btnRunMigrate');
+  const dollId = document.getElementById('migDoll').value;
+  const migType = document.querySelector('input[name="migType"]:checked').value;
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d || migrateFiles.length === 0) return;
+
+  const images = migrateFiles.filter(f => (f.mimeType || '').startsWith('image/'));
+  const videos = migrateFiles.filter(f => (f.mimeType || '').startsWith('video/'));
+  const texts = migrateFiles.filter(f => (f.mimeType || '') === 'text/plain' || f.name.toLowerCase().endsWith('.txt'));
+
+  if (migType === 'profile' && images.length === 0) {
+    msg('migMsg', '代表写真として取り込むには、写真を1枚以上選んでください', 'error');
     return;
   }
 
-  const category = categorySelect.value === '__new__' ? newCategoryInput.value.trim() : categorySelect.value;
-  const charName = charInput.value.trim();
-  const catchCopy = catchInput.value.trim();
-  const ts = timestamp();
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-  const parts = [category, charName, ts].filter(Boolean);
-  const baseName = parts.join('_');
-
-  statusEl.textContent = '画像を作成中...';
-  saveBtn.disabled = true;
-
-  const imageFile = new File([file], `${baseName}.${ext}`, { type: file.type });
-  const BOM = String.fromCharCode(0xFEFF);
-  const textContent = `${BOM}【カテゴリ】\n${category}\n\n【キャラ名】\n${charName}\n\n【キャッチコピー】\n${catchCopy}\n`;
-  const textFile = new File([textContent], `${baseName}.txt`, { type: 'text/plain;charset=utf-8' });
-
-  let files = [imageFile, textFile];
+  btn.disabled = true;
   try {
-    const captionedBlob = await createCaptionedImage(file, charName, catchCopy);
-    if (captionedBlob) {
-      files.push(new File([captionedBlob], `${baseName}_card.jpg`, { type: 'image/jpeg' }));
-    }
-
-    if (navigator.canShare && navigator.canShare({ files })) {
-      try {
-        await navigator.share({ files });
-        statusEl.textContent = `共有シートから「ドライブ」を選び、hasune/${category || '(カテゴリ未選択)'}/${charName || '(キャラ名未入力)'} フォルダに保存してください。`;
-      } catch (e) {
-        statusEl.textContent = '共有がキャンセルされました。';
+    if (migType === 'profile') {
+      // 最初の画像を代表写真に。profile/ へ移動
+      const photo = images[0];
+      msg('migMsg', '代表写真として取り込み中...');
+      const oldParents = await getParents(photo.id);
+      await moveDriveFile(photo.id, d.profileFolderId, oldParents.join(','));
+      d.profilePhotoFileId = photo.id;
+      // カード画像らしきもの(_card)が同時に選ばれていれば一緒にprofileへ
+      for (const f of images.slice(1)) {
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, d.profileFolderId, p.join(','));
+        if (f.name.includes('_card')) d.profileCardFileId = f.id;
       }
+      for (const f of texts) {
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, d.profileFolderId, p.join(','));
+        d.profileTextFileId = f.id;
+      }
+      d.updatedAt = new Date().toISOString();
+      await saveLedger(dolls);
+      msg('migMsg', `「${d.name}」の代表写真として取り込みました(profile/へ移動済み)`, 'ok');
     } else {
-      files.forEach(downloadFile);
-      statusEl.textContent = 'この端末では共有機能が使えないため、ファイルをダウンロードしました。手動でGoogleドライブアプリに移動してください。';
+      // 活動ログとして取り込み。logs/ へ移動
+      msg('migMsg', 'ファイルを整理中...');
+      const logsFolderId = await ensureFolder(d.folderId, 'logs');
+      const media = [];
+      for (const f of [...images, ...videos]) {
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, logsFolderId, p.join(','));
+        media.push({ fileId: f.id, mimeType: f.mimeType, name: f.name });
+      }
+      // txtの中身をメモに取り込む
+      let memo = '';
+      for (const f of texts) {
+        try {
+          const body = await (await driveFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?alt=media')).text();
+          memo += (memo ? '\n---\n' : '') + body.replace(/^﻿/, '').trim();
+        } catch (e) { /* 読めないtxtはスキップ */ }
+        const p = await getParents(f.id);
+        await moveDriveFile(f.id, logsFolderId, p.join(','));
+      }
+      const now = new Date().toISOString();
+      logs.data.logs.push({
+        id: newId(),
+        dollId: d.id,
+        memo: memo || '(旧形式から取り込み)',
+        media,
+        textFileId: texts.length ? texts[0].id : null,
+        createdAt: now, updatedAt: now,
+        archived: false, archivedAt: null, archivedReason: null, visible: true,
+        attributes: { '取り込み元': '共有シート時代のファイル' }
+      });
+      await saveLedger(logs);
+      msg('migMsg', `「${d.name}」の活動ログとして取り込みました(写真・動画${media.length}件、logs/へ移動済み)`, 'ok');
     }
+    migrateFiles = [];
+    document.getElementById('migrateFileList').textContent = '';
+    document.getElementById('migrateOptions').style.display = 'none';
+  } catch (e) {
+    msg('migMsg', '取り込みに失敗しました: ' + e.message, 'error');
   } finally {
-    saveBtn.disabled = false;
+    btn.disabled = false;
   }
-});
+};
+
+async function renameDoll(dollId) {
+  const d = dolls.data.dolls.find(x => x.id === dollId);
+  if (!d) return;
+  const newName = prompt('新しいキャラ名', d.name);
+  if (!newName || newName.trim() === '' || newName.trim() === d.name) return;
+  // 同名チェック(項目8と同一基準)。Drive操作・レコード書き換えの前に行う
+  if (findDuplicateDollName(d.categoryId, newName.trim(), d.id)) {
+    msg('manageCharsMsg', '同じ名前の人形「' + newName.trim() + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
+    return;
+  }
+  try {
+    msg('manageCharsMsg', '変更中...');
+    if (d.folderId) await renameDriveFile(d.folderId, newName.trim());
+    d.name = newName.trim();
+    d.updatedAt = new Date().toISOString();
+    await saveLedger(dolls);
+    renderManageChars();
+    msg('manageCharsMsg', '変更しました(ドライブのフォルダ名も変更済み)', 'ok');
+  } catch (e) {
+    msg('manageCharsMsg', '変更に失敗しました: ' + e.message, 'error');
+  }
+}
 </script>
 </body>
 </html>
