@@ -131,6 +131,16 @@
   </div>
 </div>
 
+<!-- 台帳の問題検知画面(消失・同名重複) -->
+<div class="screen" id="scr-ledgerwarn">
+  <h1>人形コレクション</h1>
+  <div class="card">
+    <div class="msg error" id="ledgerWarnMsg" style="margin-top:0;"></div>
+    <button class="back" id="btnForceCreateLedgers"
+      style="display:none; margin-top:20px; text-decoration:underline;">復元できなかった場合はこちら(新しい台帳を作る)</button>
+  </div>
+</div>
+
 <!-- ホーム画面 -->
 <div class="screen" id="scr-home">
   <h1>人形コレクション</h1>
@@ -482,12 +492,22 @@ const LEDGER_ARRAY_KEYS = {
   'settings.json': ['categories', 'attributeDefinitions']
 };
 
-async function ensureLedger(name, defaultData) {
-  const found = await findChild(dbFolderId, name, false);
-  if (found) {
+const LEDGER_NAMES = ['settings.json', 'dolls.json', 'logs.json'];
+
+// _db直下のファイル一覧を1回で取得(台帳の特定と同名重複検知を兼ねる)
+async function listDbFiles() {
+  const q = `'${dbFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id,name)&pageSize=100');
+  const data = await res.json();
+  return data.files || [];
+}
+
+async function loadOrCreateLedger(name, files, defaultData) {
+  const entry = files.find(f => f.name === name);
+  if (entry) {
     // 台帳が既に存在する場合、壊れていても絶対に初期データで作り直さない
     try {
-      return { fileId: found.id, name, data: await readJson(found.id) };
+      return { fileId: entry.id, name, data: await readJson(entry.id) };
     } catch (e) {
       if (e.isCorrupt) {
         throw new Error('台帳ファイル「' + name + '」が壊れている可能性があります。' +
@@ -502,6 +522,46 @@ async function ensureLedger(name, defaultData) {
     new Blob([JSON.stringify(defaultData, null, 2)], { type: 'application/json' }), 'application/json');
   return { fileId, name, data: defaultData };
 }
+
+// 台帳の問題(消失・同名重複)を検知したときの警告画面表示
+let pendingMissingLedgers = null;
+let forceCreateApproved = false;
+
+function showLedgerProblem(text, withCreateButton) {
+  msg('ledgerWarnMsg', text, 'error');
+  document.getElementById('btnForceCreateLedgers').style.display =
+    withCreateButton ? 'block' : 'none';
+  show('scr-ledgerwarn');
+}
+
+function ledgerProblemError() {
+  const e = new Error('台帳の問題を検知したため停止しました');
+  e.handled = true; // 警告画面で案内済み。呼び出し元でのメッセージ表示は不要
+  return e;
+}
+
+document.getElementById('btnForceCreateLedgers').onclick = async () => {
+  const missing = pendingMissingLedgers || [];
+  if (missing.length === 0) return;
+  let text = '本当に空の台帳を新しく作りますか?\n\n' +
+    '作成するのは見つからない ' + missing.join(' / ') + ' だけです。' +
+    '無事なファイルには一切触れません。\n' +
+    '過去に登録したデータの一部が表示されなくなる可能性があります' +
+    '(写真などのファイル自体は消えません)。';
+  if (missing.includes('settings.json') && !missing.includes('dolls.json')) {
+    text += '\n\n※カテゴリ情報(settings.json)を作り直すため、既存の人形のカテゴリが' +
+      '一時的にID表示になります。編集画面からカテゴリを選び直すと直ります。';
+  }
+  if (!confirm(text)) return;
+  forceCreateApproved = true;
+  try {
+    await afterSetup();
+  } catch (e) {
+    if (!e.handled) msg('ledgerWarnMsg', 'エラー: ' + e.message, 'error');
+  } finally {
+    forceCreateApproved = false;
+  }
+};
 
 // レコードの同一性: id(なければkey。attributeDefinitions用)
 function recordIdentity(r) {
@@ -625,19 +685,63 @@ function migrateLedgersToV2() {
 }
 
 async function initLedgers() {
-  dbFolderId = await ensureFolder(rootFolderId, '_db');
+  // _dbフォルダの「既存かどうか」は消失検知の判定Aに使うため、検索と作成を分ける
+  const foundDb = await findChild(rootFolderId, '_db', true);
+  const dbExisted = !!foundDb;
+  dbFolderId = dbExisted ? foundDb.id : await createFolder(rootFolderId, '_db');
   backupFolderId = null; // 保存先が変わった場合に備えてキャッシュを破棄
-  settings = await ensureLedger('settings.json', {
+
+  const files = await listDbFiles();
+
+  // (c) 同名重複検知: 3台帳すべて対象。自動でどちらかを読むことはしない
+  const dupNames = LEDGER_NAMES.filter(n => files.filter(f => f.name === n).length >= 2);
+  if (dupNames.length > 0) {
+    showLedgerProblem(
+      '⚠️ _dbフォルダの中に ' + dupNames.map(n => '「' + n + '」').join('・') +
+      ' が2つ以上見つかりました。\n\nどちらが正しいデータか自動では判定できないため、' +
+      '安全のため停止しました。\nGoogleドライブで hasune/_db を開き、中身を確認して' +
+      '正しい方だけを残してください(不要な方は名前を変えるかゴミ箱へ)。\n' +
+      'その後、このアプリを開き直してください。', false);
+    throw ledgerProblemError();
+  }
+
+  // (a) 消失検知: 過去に台帳が存在した形跡があるのに見つからない場合は自動作成しない。
+  // 判定A: _dbフォルダが既存(台帳と_dbは必ず同時に作られるため、_dbだけある状態は消失の証拠)
+  // 判定B: この端末での利用実績(localStorage。_dbフォルダごと消された場合を補完)
+  const missing = LEDGER_NAMES.filter(n => !files.some(f => f.name === n));
+  const seenKey = 'dollapp_ledgerSeen_' + rootFolderId;
+  const seenBefore = localStorage.getItem(seenKey) === '1';
+  if (missing.length > 0 && (dbExisted || seenBefore) && !forceCreateApproved) {
+    pendingMissingLedgers = missing;
+    showLedgerProblem(
+      '⚠️ 台帳ファイル(' + missing.join(' / ') + ')が見つかりません。\n\n' +
+      '以前このフォルダでデータを使っていた形跡があります。\n' +
+      'Googleドライブのゴミ箱に該当ファイルがないか確認し、あれば右クリック→「復元」' +
+      'してから、このアプリを開き直してください。\n' +
+      '(ゴミ箱の保管期限は30日です。期限を過ぎると復元できません)\n\n' +
+      'また、hasune/_db/backup フォルダに日次コピー(例: dolls-日付.json)が残っている' +
+      '場合は、そこからの復元もできます。', true);
+    throw ledgerProblemError();
+  }
+
+  // (d) 初回利用、または(b)で明示的に承認された場合のみ、無いファイルだけを新規作成する
+  // (存在するファイルには読み込み以外の操作をしない)
+  settings = await loadOrCreateLedger('settings.json', files, {
     schemaVersion: 2, categories: [], attributeDefinitions: []
   });
-  dolls = await ensureLedger('dolls.json', { schemaVersion: 2, dolls: [] });
-  logs = await ensureLedger('logs.json', { schemaVersion: 2, logs: [] });
+  dolls = await loadOrCreateLedger('dolls.json', files, { schemaVersion: 2, dolls: [] });
+  logs = await loadOrCreateLedger('logs.json', files, { schemaVersion: 2, logs: [] });
+
   if (migrateLedgersToV2()) {
     // 移行直後は読んだばかりの内容を書くだけなのでマージ不要(旧IDが復活してしまうため)
     await writeLedger(settings);
     await writeLedger(dolls);
     await writeLedger(logs);
   }
+
+  // 台帳の読み込み/作成に成功した実績を端末に記録(判定B用)
+  localStorage.setItem(seenKey, '1');
+  pendingMissingLedgers = null;
 }
 
 // ================= 起動フロー =================
@@ -674,7 +778,7 @@ document.getElementById('btnLogin').onclick = async () => {
     }
     show('scr-setup');
   } catch (e) {
-    msg('loginMsg', 'ログインに失敗しました: ' + e.message, 'error');
+    if (!e.handled) msg('loginMsg', 'ログインに失敗しました: ' + e.message, 'error');
   }
 };
 
@@ -701,7 +805,7 @@ document.getElementById('btnPickFolder').onclick = () => {
       localStorage.setItem(LS_FOLDER, rootFolderId);
       localStorage.setItem(LS_FOLDER_NAME, picked.name);
       msg('setupMsg', '「' + picked.name + '」を保存先に設定しました。準備中...', 'ok');
-      try { await afterSetup(); } catch (e) { msg('setupMsg', 'エラー: ' + e.message, 'error'); }
+      try { await afterSetup(); } catch (e) { if (!e.handled) msg('setupMsg', 'エラー: ' + e.message, 'error'); }
     })
     .build().setVisible(true);
 };
