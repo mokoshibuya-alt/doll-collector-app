@@ -139,6 +139,8 @@
   <button class="menu" id="btnGoLog">📝 活動ログを保存する</button>
   <button class="menu" id="btnGoManage">⚙️ カテゴリ・キャラ管理</button>
   <p class="note" id="homeNote"></p>
+  <button class="secondary" id="btnRefresh" style="margin-top:12px;">🔄 最新に更新</button>
+  <div class="msg" id="homeMsg"></div>
   <button class="secondary" id="btnRepickFolder" style="margin-top:24px; font-size:0.85rem; padding:10px;">保存先フォルダを選び直す(いま間違ったフォルダに保存されている場合)</button>
 </div>
 
@@ -727,6 +729,30 @@ function refreshHome() {
   document.getElementById('homeNote').textContent = homeNoteText();
   show('scr-home');
 }
+
+// 🔄最新に更新: Driveから台帳を読み直して再描画する。
+// ホーム画面にのみ存在するボタンのため、編集画面を開いている間は押せない
+// (入力中の内容を消すルートを作らない)。
+// 3台帳すべての読み直しに成功してからメモリを差し替える(途中失敗時は一切変更しない)
+document.getElementById('btnRefresh').onclick = async () => {
+  const btn = document.getElementById('btnRefresh');
+  btn.disabled = true;
+  msg('homeMsg', '更新中...');
+  try {
+    const newSettings = await readJson(settings.fileId);
+    const newDolls = await readJson(dolls.fileId);
+    const newLogs = await readJson(logs.fileId);
+    settings.data = newSettings;
+    dolls.data = newDolls;
+    logs.data = newLogs;
+    document.getElementById('homeNote').textContent = homeNoteText();
+    msg('homeMsg', '最新の状態に更新しました', 'ok');
+  } catch (e) {
+    msg('homeMsg', '更新に失敗しました(通信状態を確認してください)。表示中のデータは変更していません。', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 document.getElementById('btnRepickFolder').onclick = () => {
   if (!confirm('保存先フォルダを選び直しますか?\n(登録済みのデータが消えることはありません)')) return;
