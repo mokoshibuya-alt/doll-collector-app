@@ -513,8 +513,9 @@ async function loadOrCreateLedger(name, files, defaultData) {
       return { fileId: entry.id, name, data: await readJson(entry.id) };
     } catch (e) {
       if (e.isCorrupt) {
+        const folderLabel = localStorage.getItem(LS_FOLDER_NAME) || '保存先フォルダ';
         throw new Error('台帳ファイル「' + name + '」が壊れている可能性があります。' +
-          'Googleドライブで hasune/_db/' + name + ' を右クリック→「版を管理」から' +
+          'Googleドライブで ' + folderLabel + '/_db/' + name + ' を右クリック→「版を管理」から' +
           '以前の版に復元してから、もう一度開いてください。' +
           '(このアプリからは上書きしません)');
       }
