@@ -963,6 +963,15 @@ document.getElementById('btnSaveDoll').onclick = async () => {
   const newCatName = regNewCategory.value.trim();
   if (categoryId === '__new__' && !newCatName) { msg('regMsg', '新しいカテゴリ名を入力してください', 'error'); return; }
 
+  // 新規カテゴリの同名チェック(trim済み完全一致)。同名レコードの二重登録を防ぐ
+  if (categoryId === '__new__') {
+    const dupCat = settings.data.categories.find(c => c.name === newCatName);
+    if (dupCat) {
+      msg('regMsg', '同じ名前のカテゴリ「' + newCatName + '」が既にあります。プルダウンから既存のものを選ぶか、別の名前にしてください。', 'error');
+      return;
+    }
+  }
+
   // 同一カテゴリ内に同名の人形がいるとフォルダが共有されてしまうため中断
   if (categoryId !== '__new__') {
     const dup = findDuplicateDollName(categoryId, name, null);
