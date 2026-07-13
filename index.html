@@ -1698,6 +1698,11 @@ document.getElementById('btnArchiveDoll').onclick = async () => {
   if (!confirm(`「${d.name}」をアーカイブして一覧から隠しますか?\n(データやファイルは消えません。後から戻せます)`)) return;
   const reason = prompt('理由をメモしておけます(空欄でもOK)', '') || null;
   try {
+    // モコ発注(2026-07-13): アーカイブ時はキャラフォルダを「名前_アーカイブ_yyyy-mm-dd」に
+    // 自動改名(ドライブ上でも引退が一目で分かる+同名の新規登録とフォルダ名が衝突しない)。
+    // 復元時に元の名前へ戻す。中のファイル名は当時の記録として触らない
+    const dateStr = new Date().toISOString().slice(0, 10);
+    if (d.folderId) await renameDriveFile(d.folderId, d.name + '_アーカイブ_' + dateStr);
     d.archived = true;
     d.archivedAt = new Date().toISOString();
     d.archivedReason = reason;
@@ -1722,6 +1727,8 @@ document.getElementById('btnRestoreDoll').onclick = async () => {
   }
   if (!confirm('「' + d.name + '」をアーカイブから現役に戻しますか?')) return;
   try {
+    // アーカイブ時に付けたフォルダ名のしるしを外して元の名前に戻す
+    if (d.folderId) await renameDriveFile(d.folderId, d.name);
     d.archived = false;
     d.archivedAt = null;      // 案a: 復元時にクリア(モコ承認済み)
     d.archivedReason = null;
