@@ -424,6 +424,8 @@ async function createFolder(parentId, name) {
   return (await res.json()).id;
 }
 
+// 【項目15により日常運用では使用禁止】名前検索での同名再利用は事故の温床のため、
+// 利用は日次バックアップ(backup)フォルダの初期化のみに限定する
 async function ensureFolder(parentId, name) {
   const found = await findChild(parentId, name, true);
   return found ? found.id : await createFolder(parentId, name);
@@ -981,6 +983,8 @@ document.getElementById('btnSaveDoll').onclick = async () => {
       msg('regMsg', '同じ名前の人形「' + name + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
       return;
     }
+    // 項目15-5: アーカイブ済みの同名は知らせて選ばせる(ブロックはしない)
+    if (!confirmArchivedDup(categoryId, name, null)) return;
   }
 
   btn.disabled = true;
@@ -990,23 +994,27 @@ document.getElementById('btnSaveDoll').onclick = async () => {
     let category;
     if (categoryId === '__new__') {
       msg('regMsg', 'カテゴリを作成中...');
-      const folderId = await ensureFolder(rootFolderId, newCatName);
+      // 項目15: 新規カテゴリのフォルダも常に新規作成(同名再利用をしない)
+      const folderId = await createFolder(rootFolderId, newCatName);
       const nowIso = new Date().toISOString();
       category = { id: newId(), name: newCatName, folderId, createdAt: nowIso, updatedAt: nowIso };
       settings.data.categories.push(category);
       await saveLedger(settings);
     } else {
       category = settings.data.categories.find(c => c.id === categoryId);
-      if (!category.folderId) { // 念のため
-        category.folderId = await ensureFolder(rootFolderId, category.name);
-        await saveLedger(settings);
+      // 項目15-1: フォルダ情報が無い場合の自己修復(黙って作り直す)は廃止。報告して停止
+      if (!category || !category.folderId) {
+        msg('regMsg', 'カテゴリのフォルダ情報が見つかりません。「🔄 最新に更新」をしてからもう一度お試しください。', 'error');
+        return;
       }
     }
 
-    // キャラフォルダ + profileフォルダ
+    // キャラフォルダ + profileフォルダ + logsフォルダ
+    // 項目15-3: 同名フォルダの再利用(ensureFolder)をやめ、常に新規作成する
     msg('regMsg', 'フォルダを準備中...');
-    const dollFolderId = await ensureFolder(category.folderId, name);
-    const profileFolderId = await ensureFolder(dollFolderId, 'profile');
+    const dollFolderId = await createFolder(category.folderId, name);
+    const profileFolderId = await createFolder(dollFolderId, 'profile');
+    const logsFolderId = await createFolder(dollFolderId, 'logs');
 
     // ファイル生成
     msg('regMsg', '画像を作成中...');
@@ -1037,6 +1045,7 @@ document.getElementById('btnSaveDoll').onclick = async () => {
       name, catchcopy: catchCopy,
       folderId: dollFolderId,
       profileFolderId,
+      logsFolderId,
       profilePhotoFileId: photoFileId,
       profileTextFileId: textFileId,
       profileCardFileId: cardFileId,
@@ -1266,7 +1275,7 @@ document.getElementById('btnSaveLog').onclick = async () => {
   try {
     await refreshTokenIfExpiringSoon();
     msg('logMsg', 'フォルダを準備中...');
-    const logsFolderId = await ensureFolder(d.folderId, 'logs');
+    const logsFolderId = await getOrInitLogsFolder(d); // 項目15-4: ID特定方式
     const ts = timestamp();
     const media = [];
     for (let i = 0; i < files.length; i++) {
@@ -1358,6 +1367,31 @@ function findDuplicateDollName(categoryId, name, excludeId) {
     normalizeForCompare(x.name) === target);
 }
 
+// 項目15-5: アーカイブ済みに同名がいる場合は、止めずに知らせて選ばせる
+// (命名の自由は保つ。15-3の常時新規フォルダ化とセットで、OKなら完全な別の子になる)
+// 戻り値: true=続行してよい / false=利用者がキャンセル
+function confirmArchivedDup(categoryId, name, excludeId) {
+  const target = normalizeForCompare(name);
+  const archDup = dolls.data.dolls.find(x =>
+    x.categoryId === categoryId && x.archived && x.id !== excludeId &&
+    normalizeForCompare(x.name) === target);
+  if (!archDup) return true;
+  return confirm('アーカイブ済みの同名「' + archDup.name + '」がいます' +
+    (archDup.archivedAt ? '(' + archDup.archivedAt.slice(0, 10) + '引退)' : '') +
+    '。\n別の子として進めますか?\nOK=このまま進める / キャンセル=名前を考え直す');
+}
+
+// 項目15-4: 活動ログ用フォルダはIDで特定する(名前検索の日常利用を廃止)。
+// 既存人形(logsFolderId未保持)は一度だけ旧来の名前検索で移行し、IDを台帳に記録する
+async function getOrInitLogsFolder(d) {
+  if (d.logsFolderId) return d.logsFolderId;
+  const found = await findChild(d.folderId, 'logs', true);
+  d.logsFolderId = found ? found.id : await createFolder(d.folderId, 'logs');
+  d.updatedAt = new Date().toISOString();
+  await saveLedger(dolls);
+  return d.logsFolderId;
+}
+
 let editDollBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
 
 function openEditDoll(dollId) {
@@ -1402,6 +1436,17 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
       msg('edMsg', '同じ名前の人形「' + newName + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
       return;
     }
+    // 項目15-5: アーカイブ済みの同名は知らせて選ばせる
+    if (!confirmArchivedDup(newCatId, newName, d.id)) return;
+  }
+
+  // 項目15-2: 移動先カテゴリのフォルダ情報を事前確認(自己修復はしない)
+  if (newCatId !== d.categoryId) {
+    const newCatPre = settings.data.categories.find(c => c.id === newCatId);
+    if (!newCatPre || !newCatPre.folderId) {
+      msg('edMsg', '移動先カテゴリのフォルダ情報が見つかりません。「🔄 最新に更新」をしてからもう一度お試しください。', 'error');
+      return;
+    }
   }
 
   btn.disabled = true;
@@ -1424,10 +1469,7 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
       const newCat = settings.data.categories.find(c => c.id === newCatId);
       if (newCat && d.folderId) {
         msg('edMsg', 'カテゴリを移動中...');
-        if (!newCat.folderId) {
-          newCat.folderId = await ensureFolder(rootFolderId, newCat.name);
-          await saveLedger(settings);
-        }
+        // folderIdは保存前に事前確認済み(項目15-2。自己修復は廃止)
         await moveDriveFile(d.folderId, newCat.folderId, oldCat ? oldCat.folderId : rootFolderId);
       }
       d.categoryId = newCatId;
@@ -1729,7 +1771,7 @@ document.getElementById('btnRunMigrate').onclick = async () => {
     } else {
       // 活動ログとして取り込み。logs/ へ移動
       msg('migMsg', 'ファイルを整理中...');
-      const logsFolderId = await ensureFolder(d.folderId, 'logs');
+      const logsFolderId = await getOrInitLogsFolder(d); // 項目15-4: ID特定方式
       const media = [];
       for (const f of [...images, ...videos]) {
         const p = await getParents(f.id);
@@ -1780,6 +1822,8 @@ async function renameDoll(dollId) {
     msg('manageCharsMsg', '同じ名前の人形「' + newName.trim() + '」がこのカテゴリに既にあります。フォルダが共有されるため、名前を変えてください。', 'error');
     return;
   }
+  // 項目15-5: アーカイブ済みの同名は知らせて選ばせる
+  if (!confirmArchivedDup(d.categoryId, newName.trim(), d.id)) return;
   try {
     msg('manageCharsMsg', '変更中...');
     if (d.folderId) await renameDriveFile(d.folderId, newName.trim());
