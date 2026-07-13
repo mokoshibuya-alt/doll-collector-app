@@ -1387,6 +1387,8 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
   const btn = document.getElementById('btnSaveEditDoll');
   const d = dolls.data.dolls.find(x => x.id === currentDollId);
   if (!d) return;
+  // 変更前の値を控える(txt再生成の要否判定用。項目14)
+  const origState = { name: d.name, catchcopy: d.catchcopy || '', categoryId: d.categoryId };
   const newName = document.getElementById('edName').value.trim();
   const newCatch = document.getElementById('edCatch').value.trim();
   const newCatId = document.getElementById('edCategory').value;
@@ -1444,6 +1446,22 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
         d.profileCardFileId = await uploadFile(d.profileFolderId, `${baseName}_card.jpg`, cardBlob, 'image/jpeg');
       }
     }
+    // 項目14: 内容が変わった場合はtxt控えを再生成して参照を差し替える。
+    // 旧txtはファイルとして残るが参照が外れるため、旧3点セット(写真・カード・txt)を
+    // 人間がまとめて手動削除できるようになる
+    const contentChanged = newName !== origState.name || newCatch !== origState.catchcopy ||
+      newCatId !== origState.categoryId || !!edPhoto.files[0];
+    if (contentChanged && d.profileFolderId) {
+      msg('edMsg', 'txt控えを更新中...');
+      const catForTxt = settings.data.categories.find(c => c.id === newCatId);
+      const catName = catForTxt ? catForTxt.name : '';
+      const BOM = String.fromCharCode(0xFEFF);
+      const textContent = `${BOM}【カテゴリ】\n${catName}\n\n【キャラ名】\n${newName}\n\n【キャッチコピー】\n${newCatch}\n`;
+      const txtBase = [catName, newName, timestamp()].filter(Boolean).join('_');
+      d.profileTextFileId = await uploadFile(d.profileFolderId, `${txtBase}.txt`,
+        new Blob([textContent], { type: 'text/plain' }), 'text/plain');
+    }
+
     d.name = newName;
     d.catchcopy = newCatch;
     d.attributes = collectAttrs('edAttrs');
