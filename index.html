@@ -624,7 +624,9 @@ async function backupLedgerDaily(ledger) {
 // 楽観的ロック: 編集画面を開いた時点のupdatedAtと、Drive上の現在のupdatedAtを比較し、
 // 別の端末で更新されていた場合は上書き確認を出す。
 // 読み直しが失敗したときは警告なしで保存を続行する(項目2と同じ可用性優先の方針)
-async function confirmOverwriteIfChanged(ledger, arrayKey, recordId, baseUpdatedAt, label) {
+// 項目16: diffTextBuilder(remoteRec)が差分文を返せた場合はそれを本文に載せる。
+// 返せない場合(カテゴリ名の解決失敗・見えない差・例外)は従来の汎用文言に落とす
+async function confirmOverwriteIfChanged(ledger, arrayKey, recordId, baseUpdatedAt, label, diffTextBuilder) {
   let remoteRec = null;
   try {
     const remote = await readJson(ledger.fileId);
@@ -634,9 +636,93 @@ async function confirmOverwriteIfChanged(ledger, arrayKey, recordId, baseUpdated
   }
   const remoteUpdatedAt = remoteRec ? (remoteRec.updatedAt || null) : null;
   if (remoteRec && remoteUpdatedAt !== baseUpdatedAt) {
+    let diffText = null;
+    if (diffTextBuilder) {
+      try { diffText = diffTextBuilder(remoteRec); } catch (e) { diffText = null; }
+    }
+    if (diffText) {
+      return confirm('この' + label + 'は、編集を開いた後に別の端末で更新されています。\n\n' +
+        diffText +
+        '\n上書きして保存しますか?\n(OK=あなたの内容で保存(別の端末の変更は消えます) / キャンセル=中止)');
+    }
     return confirm('この' + label + 'は、編集を開いた後に別の端末で更新されています。\n上書きして保存しますか?');
   }
   return true;
+}
+
+// ===== 項目16: 差分表示の部品 =====
+function truncateForDiff(v) {
+  const s = (v === undefined || v === null) ? '' : String(v);
+  return s.length > 40 ? s.slice(0, 40) + '…' : s;
+}
+function catNameOf(catId) {
+  const c = settings.data.categories.find(x => x.id === catId);
+  return c ? c.name : null; // null=解決失敗(呼び出し側で汎用文言へ落とす)
+}
+function attrChangedKeys(a, b) {
+  a = a || {}; b = b || {};
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].filter(k => String(a[k] ?? '') !== String(b[k] ?? ''));
+}
+function assembleDiffText(remoteLines, mineLines) {
+  if (remoteLines.length === 0 && mineLines.length === 0) return null; // 見えない差→汎用文言
+  let t = '';
+  if (remoteLines.length) t += '【別の端末での変更】\n' + remoteLines.map(l => '・' + l).join('\n') + '\n';
+  if (mineLines.length) t += '【あなたの変更】\n' + mineLines.map(l => '・' + l).join('\n') + '\n';
+  return t;
+}
+
+// 人形の差分文(base=編集を開いた時点のスナップショット, remote=別端末の現在値, mine=入力欄の値)
+function buildDollDiffText(base, remote, mine) {
+  function describe(from, to) {
+    const lines = [];
+    if (String(to.name || '') !== String(from.name || ''))
+      lines.push('名前: 「' + truncateForDiff(from.name) + '」→「' + truncateForDiff(to.name) + '」');
+    if (String(to.catchcopy || '') !== String(from.catchcopy || ''))
+      lines.push('キャッチコピー: 「' + truncateForDiff(from.catchcopy) + '」→「' + truncateForDiff(to.catchcopy) + '」');
+    if (to.categoryId !== from.categoryId) {
+      const a = catNameOf(from.categoryId), b = catNameOf(to.categoryId);
+      if (a === null || b === null) return null;
+      lines.push('カテゴリ: 「' + a + '」→「' + b + '」');
+    }
+    return lines;
+  }
+  const remoteLines = describe(base, remote);
+  if (remoteLines === null) return null;
+  if (remote.profilePhotoFileId !== base.profilePhotoFileId) remoteLines.push('写真が差し替えられています');
+  const ra = attrChangedKeys(base.attributes, remote.attributes);
+  if (ra.length) remoteLines.push('追加情報の変更: ' + ra.join('、'));
+  if (!!remote.archived !== !!base.archived)
+    remoteLines.push(remote.archived ? 'アーカイブされました' : 'アーカイブから復元されました');
+
+  const mineLines = describe(base, mine);
+  if (mineLines === null) return null;
+  if (mine.photoChanged) mineLines.push('写真を差し替え');
+  const ma = attrChangedKeys(base.attributes, mine.attributes);
+  if (ma.length) mineLines.push('追加情報の変更: ' + ma.join('、'));
+
+  return assembleDiffText(remoteLines, mineLines);
+}
+
+// 活動ログの差分文
+function buildLogDiffText(base, remote, mine) {
+  const remoteLines = [];
+  if (String(remote.memo || '') !== String(base.memo || ''))
+    remoteLines.push('メモ: 「' + truncateForDiff(base.memo) + '」→「' + truncateForDiff(remote.memo) + '」');
+  const ra = attrChangedKeys(base.attributes, remote.attributes);
+  if (ra.length) remoteLines.push('追加情報の変更: ' + ra.join('、'));
+  if ((remote.media || []).length !== (base.media || []).length)
+    remoteLines.push('写真・動画の数: ' + (base.media || []).length + '件→' + (remote.media || []).length + '件');
+  if (!!remote.archived !== !!base.archived)
+    remoteLines.push(remote.archived ? 'アーカイブされました' : 'アーカイブから復元されました');
+
+  const mineLines = [];
+  if (String(mine.memo || '') !== String(base.memo || ''))
+    mineLines.push('メモ: 「' + truncateForDiff(base.memo) + '」→「' + truncateForDiff(mine.memo) + '」');
+  const ma = attrChangedKeys(base.attributes, mine.attributes);
+  if (ma.length) mineLines.push('追加情報の変更: ' + ma.join('、'));
+
+  return assembleDiffText(remoteLines, mineLines);
 }
 
 // 保存 = Drive上の最新を読み直し→レコード単位でマージ→(日次バックアップ)→書き込み。
@@ -1392,12 +1478,14 @@ async function getOrInitLogsFolder(d) {
   return d.logsFolderId;
 }
 
-let editDollBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
+// 編集画面を開いた時点のレコードのディープコピー(楽観的ロックの基準+項目16の差分表示用)。
+// 生参照は不可: 🔄最新に更新などでメモリ上のレコードが差し替わっても基準が動かないようにする
+let editDollBaseSnapshot = null;
 
 function openEditDoll(dollId) {
   const d = dolls.data.dolls.find(x => x.id === dollId);
   if (!d) return;
-  editDollBaseUpdatedAt = d.updatedAt || null;
+  editDollBaseSnapshot = JSON.parse(JSON.stringify(d)); // ディープコピーで基準を固定
   edPhoto.value = '';
   edPreview.style.display = 'none';
   const sel = document.getElementById('edCategory');
@@ -1453,7 +1541,15 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
   try {
     await refreshTokenIfExpiringSoon();
     // 楽観的ロック: 別の端末で更新されていたら上書き確認(Drive操作より前に行う)
-    const okToSave = await confirmOverwriteIfChanged(dolls, 'dolls', currentDollId, editDollBaseUpdatedAt, '人形');
+    const okToSave = await confirmOverwriteIfChanged(dolls, 'dolls', currentDollId,
+      editDollBaseSnapshot ? (editDollBaseSnapshot.updatedAt || null) : null, '人形',
+      (remoteRec) => buildDollDiffText(editDollBaseSnapshot, remoteRec, {
+        name: newName,
+        catchcopy: newCatch,
+        categoryId: newCatId,
+        photoChanged: !!edPhoto.files[0],
+        attributes: collectAttrs('edAttrs')
+      }));
     if (!okToSave) {
       msg('edMsg', '保存を中止しました。編集内容は画面に残っています。');
       return;
@@ -1542,13 +1638,14 @@ let currentLogId = null;
 document.getElementById('btnAddElAttr').onclick = () => addAttrRow('elAttrs');
 document.getElementById('btnBackFromEditLog').onclick = () => openDetail(currentDollId);
 
-let editLogBaseUpdatedAt = null; // 編集画面を開いた時点のupdatedAt(楽観的ロック用)
+// 編集画面を開いた時点のレコードのディープコピー(楽観的ロックの基準+項目16の差分表示用)
+let editLogBaseSnapshot = null;
 
 function openEditLog(logId) {
   currentLogId = logId;
   const l = logs.data.logs.find(x => x.id === logId);
   if (!l) return;
-  editLogBaseUpdatedAt = l.updatedAt || null;
+  editLogBaseSnapshot = JSON.parse(JSON.stringify(l)); // ディープコピーで基準を固定
   document.getElementById('elMemo').value = l.memo || '';
   const attrsEl = document.getElementById('elAttrs');
   attrsEl.innerHTML = '';
@@ -1565,7 +1662,12 @@ document.getElementById('btnSaveEditLog').onclick = async () => {
   try {
     await refreshTokenIfExpiringSoon();
     // 楽観的ロック: 別の端末で更新されていたら上書き確認(レコードを書き換える前に行う)
-    const okToSave = await confirmOverwriteIfChanged(logs, 'logs', currentLogId, editLogBaseUpdatedAt, '活動ログ');
+    const okToSave = await confirmOverwriteIfChanged(logs, 'logs', currentLogId,
+      editLogBaseSnapshot ? (editLogBaseSnapshot.updatedAt || null) : null, '活動ログ',
+      (remoteRec) => buildLogDiffText(editLogBaseSnapshot, remoteRec, {
+        memo: document.getElementById('elMemo').value.trim(),
+        attributes: collectAttrs('elAttrs')
+      }));
     if (!okToSave) {
       msg('elMsg', '保存を中止しました。編集内容は画面に残っています。');
       return;
