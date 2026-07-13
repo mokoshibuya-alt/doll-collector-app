@@ -277,6 +277,7 @@
   <button class="back" id="btnBackFromManage">← ホームへ戻る</button>
   <h2>⚙️ カテゴリ管理</h2>
   <p class="note">名前を変えると、Googleドライブの実際のフォルダ名も一緒に変わります。行をタップすると中のキャラ一覧へ。</p>
+  <button class="secondary" id="btnAddCategory" style="margin-top:0; margin-bottom:12px;">＋ カテゴリを追加</button>
   <div id="manageCats"></div>
   <div class="msg" id="manageMsg"></div>
 </div>
@@ -1848,6 +1849,31 @@ function renderManageCats() {
     el.appendChild(item);
   }
 }
+
+// カテゴリの単独追加(モコ発注 2026-07-13。当初モックアップにあった機能の実装漏れを解消)
+document.getElementById('btnAddCategory').onclick = async () => {
+  const name = prompt('新しいカテゴリ名');
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  // 同名チェック(項目13の正規化比較)
+  if (settings.data.categories.some(c => normalizeForCompare(c.name) === normalizeForCompare(trimmed))) {
+    msg('manageMsg', '同じ名前のカテゴリ「' + trimmed + '」が既にあります。別の名前にしてください。', 'error');
+    return;
+  }
+  try {
+    msg('manageMsg', '作成中...');
+    await refreshTokenIfExpiringSoon();
+    // 項目15の方針どおり常に新規作成(同名フォルダの再利用はしない)
+    const folderId = await createFolder(rootFolderId, trimmed);
+    const nowIso = new Date().toISOString();
+    settings.data.categories.push({ id: newId(), name: trimmed, folderId, createdAt: nowIso, updatedAt: nowIso });
+    await saveLedger(settings);
+    renderManageCats();
+    msg('manageMsg', 'カテゴリ「' + trimmed + '」を作成しました(ドライブにフォルダも作成済み)', 'ok');
+  } catch (e) {
+    msg('manageMsg', '作成に失敗しました: ' + e.message, 'error');
+  }
+};
 
 async function renameCategory(catId) {
   const c = settings.data.categories.find(x => x.id === catId);
