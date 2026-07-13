@@ -184,6 +184,8 @@
   <h2>📚 保存済み一覧</h2>
   <div id="dollList"></div>
   <div class="msg" id="listMsg"></div>
+  <button class="back" id="btnToggleArchivedDolls" style="display:none; text-decoration:underline;">アーカイブ済みを表示</button>
+  <div id="archivedDolls" style="display:none;"></div>
 </div>
 
 <!-- キャラクター詳細画面 -->
@@ -196,6 +198,8 @@
   <h2>活動ログ</h2>
   <div id="detailLogs"></div>
   <div class="msg" id="detailMsg"></div>
+  <button class="back" id="btnToggleArchivedLogs" style="display:none; text-decoration:underline;">アーカイブ済みログを表示</button>
+  <div id="archivedLogs" style="display:none;"></div>
   <button id="btnAddLogFromDetail">＋ 活動ログを追加</button>
 </div>
 
@@ -245,6 +249,7 @@
   <button class="secondary" id="btnAddEdAttr">＋ 項目を追加</button>
 
   <button id="btnSaveEditDoll">保存する</button>
+  <button id="btnRestoreDoll" style="display:none;">アーカイブから戻す(現役に復帰)</button>
   <button class="danger" id="btnArchiveDoll">このキャラをアーカイブする(一覧から隠す)</button>
   <div class="msg" id="edMsg"></div>
 </div>
@@ -262,6 +267,7 @@
   <button class="secondary" id="btnAddElAttr">＋ 項目を追加</button>
 
   <button id="btnSaveEditLog">保存する</button>
+  <button id="btnRestoreLog" style="display:none;">アーカイブから戻す</button>
   <button class="danger" id="btnArchiveLog">このログをアーカイブする(一覧から隠す)</button>
   <div class="msg" id="elMsg"></div>
 </div>
@@ -1155,6 +1161,33 @@ document.getElementById('btnSaveDoll').onclick = async () => {
 };
 
 // ================= 一覧 =================
+function buildDollItem(d, container, isArchived) {
+  const cat = settings.data.categories.find(c => c.id === d.categoryId);
+  const div = document.createElement('div');
+  div.className = 'doll-item';
+  if (isArchived) div.style.opacity = '0.55';
+  const img = document.createElement('img');
+  img.alt = d.name;
+  div.appendChild(img);
+  const info = document.createElement('div');
+  info.className = 'info';
+  info.innerHTML = '<div class="name"></div><div class="catch"></div><div class="cat"></div>';
+  info.querySelector('.name').textContent = d.name;
+  info.querySelector('.catch').textContent = d.catchcopy || '';
+  info.querySelector('.cat').textContent = (cat ? cat.name : d.categoryId) +
+    (isArchived ? ' / アーカイブ済み' + (d.archivedAt ? '(' + d.archivedAt.slice(0, 10) + ')' : '') : '');
+  div.appendChild(info);
+  div.onclick = () => openDetail(d.id);
+  container.appendChild(div);
+  // サムネイルは非同期で読み込み
+  if (d.profilePhotoFileId) {
+    driveFetch('https://www.googleapis.com/drive/v3/files/' + d.profilePhotoFileId + '?alt=media')
+      .then(r => r.blob())
+      .then(b => { img.src = URL.createObjectURL(b); })
+      .catch(() => {});
+  }
+}
+
 async function renderList() {
   const listEl = document.getElementById('dollList');
   listEl.innerHTML = '';
@@ -1162,33 +1195,28 @@ async function renderList() {
   const items = dolls.data.dolls.filter(d => !d.archived && d.visible !== false);
   if (items.length === 0) {
     msg('listMsg', 'まだ登録がありません。「人形を登録する」から始めてください。');
-    return;
   }
-  for (const d of items) {
-    const cat = settings.data.categories.find(c => c.id === d.categoryId);
-    const div = document.createElement('div');
-    div.className = 'doll-item';
-    const img = document.createElement('img');
-    img.alt = d.name;
-    div.appendChild(img);
-    const info = document.createElement('div');
-    info.className = 'info';
-    info.innerHTML = '<div class="name"></div><div class="catch"></div><div class="cat"></div>';
-    info.querySelector('.name').textContent = d.name;
-    info.querySelector('.catch').textContent = d.catchcopy || '';
-    info.querySelector('.cat').textContent = cat ? cat.name : d.categoryId;
-    div.appendChild(info);
-    div.onclick = () => openDetail(d.id);
-    listEl.appendChild(div);
-    // サムネイルは非同期で読み込み
-    if (d.profilePhotoFileId) {
-      driveFetch('https://www.googleapis.com/drive/v3/files/' + d.profilePhotoFileId + '?alt=media')
-        .then(r => r.blob())
-        .then(b => { img.src = URL.createObjectURL(b); })
-        .catch(() => {});
-    }
-  }
+  for (const d of items) buildDollItem(d, listEl, false);
+
+  // 項目18: アーカイブ済みの一覧(既定は畳んだ状態。ボタンで開閉)
+  const archived = dolls.data.dolls.filter(d => d.archived);
+  const toggle = document.getElementById('btnToggleArchivedDolls');
+  const archEl = document.getElementById('archivedDolls');
+  archEl.innerHTML = '';
+  archEl.style.display = 'none';
+  toggle.textContent = 'アーカイブ済みを表示(' + archived.length + ')';
+  toggle.style.display = archived.length ? 'block' : 'none';
+  for (const d of archived) buildDollItem(d, archEl, true);
 }
+
+document.getElementById('btnToggleArchivedDolls').onclick = () => {
+  const el = document.getElementById('archivedDolls');
+  const toggle = document.getElementById('btnToggleArchivedDolls');
+  const willShow = el.style.display === 'none';
+  el.style.display = willShow ? 'block' : 'none';
+  toggle.textContent = (willShow ? 'アーカイブ済みを隠す(' : 'アーカイブ済みを表示(') +
+    dolls.data.dolls.filter(d => d.archived).length + ')';
+};
 
 // ================= キャラクター詳細 =================
 let currentDollId = null;
@@ -1221,62 +1249,87 @@ function openDetail(dollId) {
     .filter(l => l.dollId === dollId && !l.archived && l.visible !== false)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   msg('detailMsg', items.length === 0 ? 'まだ活動ログがありません。' : '');
-  for (const l of items) {
-    const card = document.createElement('div');
-    card.className = 'log-card';
-    const head = document.createElement('div');
-    head.className = 'log-head';
-    const date = document.createElement('div');
-    date.className = 'date';
-    date.textContent = (l.createdAt || '').slice(0, 10);
-    const editBtn = document.createElement('button');
-    editBtn.className = 'mini';
-    editBtn.textContent = '✏️ 編集';
-    editBtn.onclick = () => openEditLog(l.id);
-    head.append(date, editBtn);
-    card.appendChild(head);
-    if (l.memo) {
-      const memo = document.createElement('div');
-      memo.className = 'memo';
-      memo.textContent = l.memo;
-      card.appendChild(memo);
-    }
-    if (l.media && l.media.length) {
-      const thumbs = document.createElement('div');
-      thumbs.className = 'log-thumbs';
-      for (const m of l.media) {
-        if ((m.mimeType || '').startsWith('video/')) {
-          const v = document.createElement('div');
-          v.className = 'video-chip';
-          v.textContent = '🎬';
-          thumbs.appendChild(v);
-        } else {
-          const im = document.createElement('img');
-          thumbs.appendChild(im);
-          driveFetch('https://www.googleapis.com/drive/v3/files/' + m.fileId + '?alt=media')
-            .then(r => r.blob()).then(b => { im.src = URL.createObjectURL(b); })
-            .catch(() => {});
-        }
-      }
-      card.appendChild(thumbs);
-    }
-    const attrs = l.attributes || {};
-    const keys = Object.keys(attrs);
-    if (keys.length) {
-      const chips = document.createElement('div');
-      chips.className = 'chips';
-      for (const k of keys) {
-        const chip = document.createElement('span');
-        chip.className = 'chip';
-        chip.textContent = k + ': ' + attrs[k];
-        chips.appendChild(chip);
-      }
-      card.appendChild(chips);
-    }
-    logsEl.appendChild(card);
-  }
+  for (const l of items) logsEl.appendChild(buildLogCard(l, false));
+
+  // 項目18: アーカイブ済みログ(既定は畳んだ状態)
+  const archivedItems = logs.data.logs
+    .filter(l => l.dollId === dollId && l.archived)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const archLogsEl = document.getElementById('archivedLogs');
+  const logToggle = document.getElementById('btnToggleArchivedLogs');
+  archLogsEl.innerHTML = '';
+  archLogsEl.style.display = 'none';
+  logToggle.textContent = 'アーカイブ済みログを表示(' + archivedItems.length + ')';
+  logToggle.style.display = archivedItems.length ? 'block' : 'none';
+  for (const l of archivedItems) archLogsEl.appendChild(buildLogCard(l, true));
+
   show('scr-detail');
 }
+
+function buildLogCard(l, isArchived) {
+  const card = document.createElement('div');
+  card.className = 'log-card';
+  if (isArchived) card.style.opacity = '0.55';
+  const head = document.createElement('div');
+  head.className = 'log-head';
+  const date = document.createElement('div');
+  date.className = 'date';
+  date.textContent = (l.createdAt || '').slice(0, 10) +
+    (isArchived ? ' / アーカイブ済み' : '');
+  const editBtn = document.createElement('button');
+  editBtn.className = 'mini';
+  editBtn.textContent = '✏️ 編集';
+  editBtn.onclick = () => openEditLog(l.id);
+  head.append(date, editBtn);
+  card.appendChild(head);
+  if (l.memo) {
+    const memo = document.createElement('div');
+    memo.className = 'memo';
+    memo.textContent = l.memo;
+    card.appendChild(memo);
+  }
+  if (l.media && l.media.length) {
+    const thumbs = document.createElement('div');
+    thumbs.className = 'log-thumbs';
+    for (const m of l.media) {
+      if ((m.mimeType || '').startsWith('video/')) {
+        const v = document.createElement('div');
+        v.className = 'video-chip';
+        v.textContent = '🎬';
+        thumbs.appendChild(v);
+      } else {
+        const im = document.createElement('img');
+        thumbs.appendChild(im);
+        driveFetch('https://www.googleapis.com/drive/v3/files/' + m.fileId + '?alt=media')
+          .then(r => r.blob()).then(b => { im.src = URL.createObjectURL(b); })
+          .catch(() => {});
+      }
+    }
+    card.appendChild(thumbs);
+  }
+  const attrs = l.attributes || {};
+  const keys = Object.keys(attrs);
+  if (keys.length) {
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+    for (const k of keys) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.textContent = k + ': ' + attrs[k];
+      chips.appendChild(chip);
+    }
+    card.appendChild(chips);
+  }
+  return card;
+}
+
+document.getElementById('btnToggleArchivedLogs').onclick = () => {
+  const el = document.getElementById('archivedLogs');
+  const toggle = document.getElementById('btnToggleArchivedLogs');
+  const willShow = el.style.display === 'none';
+  el.style.display = willShow ? 'block' : 'none';
+  toggle.textContent = toggle.textContent.replace(willShow ? '表示' : '隠す', willShow ? '隠す' : '表示');
+};
 
 // ================= 活動ログ保存 =================
 let logReturnTo = 'home';
@@ -1502,6 +1555,9 @@ function openEditDoll(dollId) {
   attrsEl.innerHTML = '';
   for (const k of Object.keys(d.attributes || {})) addAttrRow('edAttrs', k, d.attributes[k]);
   msg('edMsg', '');
+  // 項目18: アーカイブ済みなら「戻す」を、現役なら「アーカイブする」を表示
+  document.getElementById('btnRestoreDoll').style.display = d.archived ? 'block' : 'none';
+  document.getElementById('btnArchiveDoll').style.display = d.archived ? 'none' : 'block';
   show('scr-editdoll');
 }
 
@@ -1633,6 +1689,30 @@ document.getElementById('btnArchiveDoll').onclick = async () => {
   }
 };
 
+// 項目18: アーカイブからの復元(レコード操作のみ。Drive上のファイル・フォルダには触れない)
+document.getElementById('btnRestoreDoll').onclick = async () => {
+  const d = dolls.data.dolls.find(x => x.id === currentDollId);
+  if (!d || !d.archived) return;
+  // 復元時も同名門番(項目13の正規化比較)を通す。現役同名がいればブロック
+  const dup = findDuplicateDollName(d.categoryId, d.name, d.id);
+  if (dup) {
+    msg('edMsg', '同名の現役「' + dup.name + '」がいるため戻せません。どちらかの名前を変更してください。', 'error');
+    return;
+  }
+  if (!confirm('「' + d.name + '」をアーカイブから現役に戻しますか?')) return;
+  try {
+    d.archived = false;
+    d.archivedAt = null;      // 案a: 復元時にクリア(モコ承認済み)
+    d.archivedReason = null;
+    d.updatedAt = new Date().toISOString(); // マージで古いarchived=trueに負けないための保護
+    await saveLedger(dolls);
+    renderList();
+    show('scr-list');
+  } catch (e) {
+    msg('edMsg', '復元に失敗しました: ' + e.message, 'error');
+  }
+};
+
 // ================= 活動ログ編集 =================
 let currentLogId = null;
 document.getElementById('btnAddElAttr').onclick = () => addAttrRow('elAttrs');
@@ -1651,6 +1731,9 @@ function openEditLog(logId) {
   attrsEl.innerHTML = '';
   for (const k of Object.keys(l.attributes || {})) addAttrRow('elAttrs', k, l.attributes[k]);
   msg('elMsg', '');
+  // 項目18: アーカイブ済みなら「戻す」を、現役なら「アーカイブする」を表示
+  document.getElementById('btnRestoreLog').style.display = l.archived ? 'block' : 'none';
+  document.getElementById('btnArchiveLog').style.display = l.archived ? 'none' : 'block';
   show('scr-editlog');
 }
 
@@ -1697,6 +1780,23 @@ document.getElementById('btnArchiveLog').onclick = async () => {
     openDetail(currentDollId);
   } catch (e) {
     msg('elMsg', 'アーカイブに失敗しました: ' + e.message, 'error');
+  }
+};
+
+// 項目18: ログのアーカイブ復元(レコード操作のみ。同名門番の対象外=ログに名前の概念がないため)
+document.getElementById('btnRestoreLog').onclick = async () => {
+  const l = logs.data.logs.find(x => x.id === currentLogId);
+  if (!l || !l.archived) return;
+  if (!confirm('このログをアーカイブから戻しますか?')) return;
+  try {
+    l.archived = false;
+    l.archivedAt = null;      // 案a: 復元時にクリア(モコ承認済み)
+    l.archivedReason = null;
+    l.updatedAt = new Date().toISOString(); // マージ保護
+    await saveLedger(logs);
+    openDetail(currentDollId);
+  } catch (e) {
+    msg('elMsg', '復元に失敗しました: ' + e.message, 'error');
   }
 };
 
