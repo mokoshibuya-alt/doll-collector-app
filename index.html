@@ -1520,6 +1520,45 @@ function confirmArchivedDup(categoryId, name, excludeId) {
     '。\n別の子として進めますか?\nOK=このまま進める / キャンセル=名前を考え直す');
 }
 
+// 3点セットの揃え直し(モコ発注 2026-07-13): 写真・カード・txtを
+// 同じ基準名(カテゴリ_キャラ名_保存日時)・最新の内容に揃える。
+// - newPhotoあり: 写真は新規アップロード(旧写真は3点丸ごと履歴として残る)
+// - newPhotoなし: 写真は中身が変わらないため改名のみ(コピーを作らずドライブが太らない)
+// - カードは常に焼き直し(新しい名前・コピーを反映)、txtは常に再生成(項目14)
+async function refreshProfileFiles(d, catName, name, catchCopy, newPhoto, msgId) {
+  const base = [catName, name, timestamp()].filter(Boolean).join('_');
+  let cardSource = null;
+  if (newPhoto) {
+    if (msgId) msg(msgId, '新しい写真をアップロード中...');
+    const ext = (newPhoto.name.split('.').pop() || 'jpg').toLowerCase();
+    d.profilePhotoFileId = await uploadFile(d.profileFolderId, base + '.' + ext, newPhoto, newPhoto.type);
+    cardSource = newPhoto;
+  } else if (d.profilePhotoFileId) {
+    if (msgId) msg(msgId, 'ファイル名を揃えています...');
+    const oldName = await getDriveFileName(d.profilePhotoFileId);
+    const ext = (oldName.split('.').pop() || 'jpg').toLowerCase();
+    await renameDriveFile(d.profilePhotoFileId, base + '.' + ext);
+    cardSource = await (await driveFetch('https://www.googleapis.com/drive/v3/files/' + d.profilePhotoFileId + '?alt=media')).blob();
+  }
+  if (cardSource) {
+    if (msgId) msg(msgId, 'カード画像を作り直しています...');
+    const cardBlob = await createCaptionedImage(cardSource, name, catchCopy);
+    if (cardBlob) {
+      d.profileCardFileId = await uploadFile(d.profileFolderId, base + '_card.jpg', cardBlob, 'image/jpeg');
+    }
+  }
+  if (msgId) msg(msgId, 'txt控えを更新中...');
+  const BOM = String.fromCharCode(0xFEFF);
+  const textContent = `${BOM}【カテゴリ】\n${catName}\n\n【キャラ名】\n${name}\n\n【キャッチコピー】\n${catchCopy}\n`;
+  d.profileTextFileId = await uploadFile(d.profileFolderId, base + '.txt',
+    new Blob([textContent], { type: 'text/plain' }), 'text/plain');
+}
+
+async function getDriveFileName(fileId) {
+  const r = await driveFetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?fields=name');
+  return (await r.json()).name || '';
+}
+
 // 項目15-4: 活動ログ用フォルダはIDで特定する(名前検索の日常利用を廃止)。
 // 既存人形(logsFolderId未保持)は一度だけ旧来の名前検索で移行し、IDを台帳に記録する
 async function getOrInitLogsFolder(d) {
@@ -1626,34 +1665,15 @@ document.getElementById('btnSaveEditDoll').onclick = async () => {
       }
       d.categoryId = newCatId;
     }
-    // 写真の差し替え(任意)
+    // 3点セットの揃え直し(モコ発注 2026-07-13): 名前・コピー・カテゴリ・写真の
+    // いずれかが変わったら、現役3点(写真・カード・txt)を同じ基準名に揃える。
+    // 項目14(txt再生成)はこの処理に統合
     const newPhoto = edPhoto.files[0];
-    if (newPhoto) {
-      msg('edMsg', '新しい写真をアップロード中...');
-      const ts = timestamp();
-      const cat = settings.data.categories.find(c => c.id === d.categoryId);
-      const ext = (newPhoto.name.split('.').pop() || 'jpg').toLowerCase();
-      const baseName = [(cat ? cat.name : ''), newName, ts].filter(Boolean).join('_');
-      d.profilePhotoFileId = await uploadFile(d.profileFolderId, `${baseName}.${ext}`, newPhoto, newPhoto.type);
-      const cardBlob = await createCaptionedImage(newPhoto, newName, newCatch);
-      if (cardBlob) {
-        d.profileCardFileId = await uploadFile(d.profileFolderId, `${baseName}_card.jpg`, cardBlob, 'image/jpeg');
-      }
-    }
-    // 項目14: 内容が変わった場合はtxt控えを再生成して参照を差し替える。
-    // 旧txtはファイルとして残るが参照が外れるため、旧3点セット(写真・カード・txt)を
-    // 人間がまとめて手動削除できるようになる
     const contentChanged = newName !== origState.name || newCatch !== origState.catchcopy ||
-      newCatId !== origState.categoryId || !!edPhoto.files[0];
+      newCatId !== origState.categoryId || !!newPhoto;
     if (contentChanged && d.profileFolderId) {
-      msg('edMsg', 'txt控えを更新中...');
-      const catForTxt = settings.data.categories.find(c => c.id === newCatId);
-      const catName = catForTxt ? catForTxt.name : '';
-      const BOM = String.fromCharCode(0xFEFF);
-      const textContent = `${BOM}【カテゴリ】\n${catName}\n\n【キャラ名】\n${newName}\n\n【キャッチコピー】\n${newCatch}\n`;
-      const txtBase = [catName, newName, timestamp()].filter(Boolean).join('_');
-      d.profileTextFileId = await uploadFile(d.profileFolderId, `${txtBase}.txt`,
-        new Blob([textContent], { type: 'text/plain' }), 'text/plain');
+      const catForFiles = settings.data.categories.find(c => c.id === newCatId);
+      await refreshProfileFiles(d, catForFiles ? catForFiles.name : '', newName, newCatch, newPhoto, 'edMsg');
     }
 
     d.name = newName;
@@ -2027,13 +2047,18 @@ async function renameDoll(dollId) {
   // 項目15-5: アーカイブ済みの同名は知らせて選ばせる
   if (!confirmArchivedDup(d.categoryId, newName.trim(), d.id)) return;
   try {
-    msg('manageCharsMsg', '変更中...');
+    msg('manageCharsMsg', '変更中...(ファイル名も揃えています)');
     if (d.folderId) await renameDriveFile(d.folderId, newName.trim());
+    // 3点セットの揃え直し(モコ発注: 管理画面の名前変更にも適用)
+    if (d.profileFolderId) {
+      const catX = settings.data.categories.find(c => c.id === d.categoryId);
+      await refreshProfileFiles(d, catX ? catX.name : '', newName.trim(), d.catchcopy || '', null, 'manageCharsMsg');
+    }
     d.name = newName.trim();
     d.updatedAt = new Date().toISOString();
     await saveLedger(dolls);
     renderManageChars();
-    msg('manageCharsMsg', '変更しました(ドライブのフォルダ名も変更済み)', 'ok');
+    msg('manageCharsMsg', '変更しました(ドライブのフォルダ名・ファイル名も揃えました)', 'ok');
   } catch (e) {
     msg('manageCharsMsg', '変更に失敗しました: ' + e.message, 'error');
   }
